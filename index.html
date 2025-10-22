@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KDEN ATIS Report</title>
+    <style>
+        body {
+            font-family: monospace;
+            background-color: #000;
+            color: #0f0;
+            margin: 20px;
+        }
+
+        pre {
+            background-color: #111;
+            padding: 15px;
+            border: 1px solid #0f0;
+            white-space: pre-wrap;
+        }
+
+        h1 {
+            color: #00ff00;
+        }
+
+        .report-box {
+            margin-bottom: 30px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>KDEN Terminal Information</h1>
+
+    <div class="report-box">
+        <h2>Spoken Voice Report (Full)</h2>
+        <pre id="full-report">Loading...</pre>
+    </div>
+
+    <div class="report-box">
+        <h2>D-ATIS Report (Digital)</h2>
+        <pre id="datis-report">Loading...</pre>
+    </div>
+
+    <script>
+        // Function to fetch and display the report
+        async function fetchAndDisplayReport(endpoint, elementId) {
+            try {
+                // The endpoint '/atis' points to the Pages Function
+                const response = await fetch(endpoint);
+                const text = await response.text();
+                document.getElementById(elementId).textContent = text;
+            } catch (error) {
+                document.getElementById(elementId).textContent = 'Error loading ATIS report: ' + error.message;
+            }
+        }
+
+        // Fetch both reports using the Pages Function endpoints
+        fetchAndDisplayReport('/atis', 'full-report');
+        fetchAndDisplayReport('/atis?format=datis', 'datis-report');
+    </script>
+
+</body>
+
+</html>
