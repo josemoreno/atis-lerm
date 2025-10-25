@@ -95,7 +95,7 @@ function formatReportForATIS(reportData) {
 
     // --- 5. Final Report Object Construction ---
     return {
-        airport_name: LERM,
+        airport_name: "LERM",
         identifier: currentIdentifier,
         time_zulu: reportData.observationTime, // Already in HH:MM Z format
         wind_data: wind_data,
