@@ -178,7 +178,9 @@ export async function onRequest(context) {
     try {
         // 2. Fetch and process the weather data using the external module
         const rawData = await getFormattedAtisData(API_KEY);
+        console.log(rawData)
         const atisData = formatReportForATIS(rawData)
+        console.log(atisData)
 
         // 3. Generate the ATIS report object
         const report = new ATISReport(atisData);
