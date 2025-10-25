@@ -30,10 +30,9 @@ function getNextIdentifier() {
  * including logic for rotating the ATIS identifier.
  *
  * @param {Object} reportData - The object populated with raw data (dv, vv, qnh, sky, etc.).
- * @param {string} airport_name - The name of the airport (e.g., "Torrejón").
  * @returns {Object} A new object with all fields formatted and identifier determined.
  */
-function formatReportForATIS(reportData, airport_name) {
+function formatReportForATIS(reportData) {
     const isNewData = reportData.observationTime !== LAST_BROADCAST_TIME;
     let currentIdentifier = ATIS_IDENTIFIERS[currentIdentifierIndex];
 
@@ -96,11 +95,11 @@ function formatReportForATIS(reportData, airport_name) {
 
     // --- 5. Final Report Object Construction ---
     return {
-        airport_name: airport_name,
+        airport_name: LERM,
         identifier: currentIdentifier,
         time_zulu: reportData.observationTime, // Already in HH:MM Z format
         wind_data: wind_data,
-        visibility: `${reportData.visibility} STATUTE MILES`, // Assuming visibility is numeric
+        visibility: `${reportData.visibility} KILOMETRES`, // Assuming visibility is numeric
         weather_and_clouds: weather_and_clouds,
         temperature: `${reportData.temperature} CELSIUS`,
         dew_point: `${reportData.dew_point} CELSIUS`,
@@ -147,7 +146,7 @@ class ATISReport {
             `ATIS ${identifierUpper} ${this.time_zulu}Z`,
             `RWY IN USE: ${this.runways_in_use.toUpperCase()}`,
             `WIND: ${wind_brief}`,
-            `VIS: ${this.visibility.toUpperCase().replace(' STATUTE MILES', 'SM')}`,
+            `VIS: ${this.visibility.toUpperCase().replace(' KILOMETRES', 'KM')}`,
             `WX/CLD: ${this.weather_and_clouds.toUpperCase().replace('SKY CLEAR', 'SKC')}`,
             `TEMP/DP: ${this.temperature.toUpperCase().replace(' ', '')}/${this.dew_point.toUpperCase().replace(' ', '')}C`,
             `ALTM: ${altimeter_brief}`,
@@ -205,44 +204,6 @@ export async function onRequest(context) {
     }
 }
 
-
-/**
- * Determines the active runway (01 or 19) based on magnetic wind direction.
- * The function assumes a simple binary choice to align with the wind for safety and efficiency.
- *
- * @param {number} windDirectionDegrees - The magnetic wind direction in degrees (0-360).
- * @returns {string} The suggested active runway ("01" or "19").
- */
-function determineActiveRunway(windDirectionDegrees) {
-    // 1. Define the magnetic headings for the two runways.
-    const RWY_01_HDG = 10;  // 010 degrees
-    const RWY_19_HDG = 190; // 190 degrees
-
-    // 2. Normalize the wind direction to be within 0-360 degrees, just in case.
-    const windDir = windDirectionDegrees % 360;
-
-    // 3. Determine the difference between the wind and each runway heading.
-    // The calculation needs to handle the wrap-around at 360/0 degrees.
-
-    // Function to calculate the smallest angular difference (0-180)
-    const getAngularDifference = (angle1, angle2) => {
-        let diff = Math.abs(angle1 - angle2);
-        // If difference is greater than 180, subtract it from 360
-        return Math.min(diff, 360 - diff);
-    };
-
-    const diffRwy01 = getAngularDifference(windDir, RWY_01_HDG);
-    const diffRwy19 = getAngularDifference(windDir, RWY_19_HDG);
-
-    // 4. Select the runway that minimizes the angular difference (i.e., closest to the wind).
-    if (diffRwy01 <= diffRwy19) {
-        // Runway 01 is closer to the wind direction.
-        return "01";
-    } else {
-        // Runway 19 is closer to the wind direction.
-        return "19";
-    }
-}
 
 /**
  * Determines the active runway (01 or 19) based on magnetic wind direction.
