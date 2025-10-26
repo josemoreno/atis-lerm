@@ -29,7 +29,9 @@
         }
 
         .raw-data-container {
+            /* Default for small screens (Mobile-First): Stack vertically */
             display: flex;
+            flex-direction: column;
             gap: 20px;
         }
 
@@ -41,6 +43,14 @@
         .raw-data-box h3 {
             color: #00ffaa;
             margin-bottom: 5px;
+        }
+
+        /* Use a media query to switch to a row layout on wider screens */
+        @media (min-width: 768px) {
+            .raw-data-container {
+                flex-direction: row;
+                /* Display side-by-side */
+            }
         }
     </style>
 </head>
@@ -107,7 +117,7 @@
         function formatSpokenText(text) {
             if (!text) return "";
 
-            // 1. Remove ':' from time (e.g., 18:50Z becomes 1850Z)
+            // 1. Remove ':' from time (e.g., 18:50Z becomes 18 50Z)
             let formattedText = text.replace(/(\d{1,2}):(\d{2}Z)/g, '$1 $2');
 
             // 2. Replace '.' from frequencies/decimals with the word "decimal"
