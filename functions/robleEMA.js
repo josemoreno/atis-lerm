@@ -9,7 +9,7 @@ function directionToDegrees(direction) {
 
     const map = {
         // Primary
-        'N': 0,    // Norte (North)
+        'N': 360,    // Norte (North)
         'E': 90,   // Este (East)
         'S': 180,  // Sur (South)
         'O': 270,  // Oeste (West)
@@ -48,7 +48,7 @@ function parseCleanConditions(rawText) {
     // Regular expressions remain the same
     const timeRegex = /Actualizado:\s*(\d{2}\/\d{2}\/\d{4})\s*(\d{2}:\d{2}:\d{2})/;
     const tempRegex = /Temp\.:\s*([\d.]+)\s*°C/;
-    const windRegex = /Viento:\s*([\d.]+)\s*km\/h\s*del\s*([A-Z]+)\.?;/i; // Captures N, S, O, etc.
+    const windRegex = /Viento:\s*([\d.]+)\s*km\/h\s*del\s*([A-Z]+)\.?/i; // Captures N, S, O, etc.
     const qnhRegex = /QNH:\s*(\d+)\s*hPa/;
     const sunTimesRegex = /Orto:\s*(\d{2}:\d{2})\.\s*[\S]*Ocaso:\s*(\d{2}:\d{2})/;
 
@@ -175,74 +175,80 @@ function convertKmhToKnots(speedKmh) {
 
 /**
  * Converts a raw observation time string (YYYY-MM-DDTHH:mm:ss) which is 
- * implicitly in the 'Europe/Madrid' time zone (CET/CEST) into the ATIS 
- * format (HH:MM Z).
+ * implicitly in 'Europe/Madrid' into the ATIS format (HH:MM Z).
+ * This function utilizes the generic getATISTimeFromLocalTime for the conversion logic.
  *
- * @param {string} rawTimeString - The time string in YYYY-MM-DDTHH:mm:ss format (CET/CEST).
- * @returns {string} The time formatted as "HH:MM Z" (e.g., "13:20 Z").
+ * @param {string} rawTimeString - The time string in YYYY-MM-DDTHH:mm:ss format.
+ * @returns {string} The time formatted as "HH:MM Z" (Zulu time), or "Invalid Date".
  */
 function convertToAtisTime(rawTimeString) {
     if (!rawTimeString) {
         return "Time Unavailable";
     }
 
-    // 1. Append a generic offset to create a parsable Date object.
-    // The date constructor is typically unreliable for time zone names,
-    // so we construct a date object using its components.
-    const dateParts = rawTimeString.match(/(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/);
-    if (!dateParts) {
-        return "Invalid Time Format";
+    // The input format is YYYY-MM-DDTHH:mm:ss, but getATISTimeFromLocalTime
+    // expects YYYY-MM-DD HH:MM:SS (space separated). We replace 'T' with a space.
+    const spaceSeparatedTime = rawTimeString.replace('T', ' ');
+
+    // Use the generic function, fixing the timezone to 'Europe/Madrid'.
+    return getATISTimeFromLocalTime(spaceSeparatedTime, 'Europe/Madrid');
+}
+
+
+/**
+ * Converts a specific local time (from a defined IANA timezone)
+ * to its corresponding UTC time, formatted in ATIS standard (HH:MM Z).
+ *
+ * This function is the primary robust time conversion utility.
+ * Input format for dateString is expected to be "YYYY-MM-DD HH:MM:SS" (space separated).
+ *
+ * @param {string} dateString The date/time string (e.g., "2024-11-20 15:30:00").
+ * @param {string} timeZoneIANA The IANA timezone code (e.g., "America/Los_Angeles").
+ * @returns {string} The time formatted as "HH:MM Z" (Zulu time), or "Invalid Date".
+ */
+function getATISTimeFromLocalTime(dateString, timeZoneIANA) {
+    // 1. Parse the input string into a list of components (Year, Month, Day, Hour, Minute, Second)
+    // Assumes input format is "YYYY-MM-DD HH:MM:SS"
+    // Splitting by [\s:-] handles spaces, hyphens, and colons.
+    const parts = dateString.split(/[\s:-]/).map(Number);
+
+    if (parts.length < 6 || parts.some(isNaN)) {
+        console.error("Input string parsing failed.");
+        return "Invalid Date";
     }
 
-    // Create a new Date object representing the time in the specified time zone (Europe/Madrid).
-    // The easiest way to force this interpretation is using the Date constructor with the timezone, 
-    // but that is only available in node, not workers. We must use Intl for robust offset calculation.
+    // Month is 0-indexed in Date constructor (0=Jan, 11=Dec)
+    // Create a NAIVE date object using the components. This date is interpreted
+    // using the local system's time zone, but we use it as a reference point.
+    const naiveDate = new Date(parts[0], parts[1] - 1, parts[2], parts[3], parts[4], parts[5]);
 
-    // This creates a date object based on the current *local* system's time zone, 
-    // which is not what we want, but it serves as a basis for Intl calculations.
-    const date = new Date(rawTimeString);
-
-    // --- Dynamic Offset Calculation (Intl Method) ---
-
-    /**
-     * Helper to dynamically calculate the time zone offset in minutes 
-     * for a given time zone and date.
-     */
-    const getOffsetMinutes = (timeZone, date) => {
-        // Create two equivalent dates, one forced to UTC and one forced to the local time zone.
-        const utcDate = new Date(date.toLocaleString('en-US', { timeZone: 'UTC', timeStyle: 'long', dateStyle: 'full' }));
-        const localDateInZone = new Date(date.toLocaleString('en-US', { timeZone, timeStyle: 'long', dateStyle: 'full' }));
-
-        // The difference in milliseconds between the two reveals the offset (60 min for CET, 120 min for CEST)
-        const diffMs = localDateInZone.getTime() - utcDate.getTime();
-        return Math.round(diffMs / 60000); // Convert milliseconds to minutes
-    };
-
-    try {
-        const offsetMinutes = getOffsetMinutes('Europe/Madrid', date);
-
-        // --- Apply the Offset ---
-        // UTC Time = Local Time - Offset
-        // We adjust the time by subtracting the offset minutes determined dynamically.
-        date.setMinutes(date.getMinutes() - offsetMinutes);
-
-        // After adjustment, we extract the UTC (Zulu) hour and minute.
-        const hours = date.getUTCHours();
-        const minutes = date.getUTCMinutes();
-
-        const formattedHours = String(hours).padStart(2, '0');
-        const formattedMinutes = String(minutes).padStart(2, '0');
-
-        return `${formattedHours}:${formattedMinutes} Z`;
-
-    } catch (e) {
-        // Fallback if Intl is not supported or throws an error (e.g., environment doesn't know 'Europe/Madrid')
-        console.error("Intl Time Zone error:", e.message);
-
-        // Fallback assumes CET (UTC+1) is active (60 minutes)
-        date.setMinutes(date.getMinutes() - 60);
-        const hours = date.getUTCHours();
-        const minutes = date.getUTCMinutes();
-        return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')} Z (Fallback)`;
+    if (isNaN(naiveDate.getTime())) {
+        console.error("Naive date initialization failed.");
+        return "Invalid Date";
     }
+
+    // 2. Correctly interpret the Naive Date's timestamp as being in the Target IANA Zone.
+    // date.toLocaleString('en-US', { timeZone: IANA }) returns a string representing the
+    // local time (in the IANA zone) of the * internal UTC moment* held by 'naiveDate'.
+    // We then pass this string back to the Date constructor. This two-step conversion
+    // forces the Date object to hold the correct internal UTC timestamp corresponding to
+    // the input date/time in the specified IANA zone, correctly handling DST offsets.
+    const dateInTargetZoneString = naiveDate.toLocaleString('en-US', { timeZone: timeZoneIANA });
+
+    const finalDateUtc = new Date(dateInTargetZoneString);
+
+    // If parsing fails, the time is invalid.
+    if (isNaN(finalDateUtc.getTime())) {
+        console.error("Time zone correction failed, resulting in NaN.");
+        return "Invalid Date";
+    }
+
+    // 3. Extract final UTC components and format to ATIS standard (HH:MM Z).
+    const finalHours = finalDateUtc.getUTCHours();
+    const finalMinutes = finalDateUtc.getUTCMinutes();
+
+    const formattedHours = String(finalHours).padStart(2, '0');
+    const formattedMinutes = String(finalMinutes).padStart(2, '0');
+
+    return `${formattedHours}:${formattedMinutes}Z`;
 }

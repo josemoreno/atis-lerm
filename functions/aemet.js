@@ -8,21 +8,45 @@ const ENDPOINT_DATA_IDEMA = "/api/observacion/convencional/datos/estacion/";
 
 /**
  * Handles the two-step AEMET API fetch: initial URL -> final data URL.
- * @param {string} initialUrl The first API endpoint to call.
+ * If any step fails (network error, HTTP error, or bad data), it logs the error 
+ * and returns null instead of throwing an exception.
+ * * @param {string} initialUrl The first API endpoint to call.
  * @param {object} headers Request headers including the API key.
- * @returns {Promise<object>} The final JSON data payload.
+ * @returns {Promise<object | null>} The final JSON data payload, or null on failure.
  */
 async function fetchAemetJson(initialUrl, headers) {
-    let ret = await fetch(initialUrl, { headers });
-    if (!ret.ok) throw new Error(`AEMET Initial API call failed with status: ${ret.status}`);
+    try {
+        // 1. Initial API Call (Get the Data URL)
+        let ret = await fetch(initialUrl, { headers });
+        if (!ret.ok) {
+            console.error(`AEMET Initial API call failed with status: ${ret.status}. URL: ${initialUrl}`);
+            return null;
+        }
 
-    let initialData = await ret.json();
-    let finalUrl = initialData.datos; // This URL points to the actual data
+        let initialData = await ret.json();
+        let finalUrl = initialData.datos; // This URL points to the actual data
 
-    let retFinal = await fetch(finalUrl);
-    if (!retFinal.ok) throw new Error(`AEMET Data fetch failed with status: ${retFinal.status}`);
+        // Check if the AEMET response structure is missing the final URL
+        if (!finalUrl) {
+            console.error("AEMET initial call succeeded but returned no final data URL ('datos').");
+            return null;
+        }
 
-    return retFinal.json();
+        // 2. Final Data Fetch
+        let retFinal = await fetch(finalUrl);
+        if (!retFinal.ok) {
+            console.error(`AEMET Data fetch failed with status: ${retFinal.status}. Final URL: ${finalUrl}`);
+            return null;
+        }
+
+        // 3. Return the parsed final data
+        return retFinal.json();
+
+    } catch (error) {
+        // Catch all other errors: network failure, JSON parsing issues, etc.
+        console.error("AEMET fetch process encountered a critical error:", error.message);
+        return null;
+    }
 }
 
 /**
@@ -35,42 +59,52 @@ async function fetchAemetJson(initialUrl, headers) {
  */
 function processAemetData(predictionData, observationDataVado, observationDataGuada) {
     let reportData = {}
+    if (predictionData == null && observationDataVado == null && observationDataGuada == null) {
+        reportData = { ...returnNullObject() }
+        return reportData
+    }
     // Example: Getting current time (a quick way to get ZULU time)
     const now = new Date();
     reportData.time = now.getUTCHours().toString().padStart(2, '0') +
         now.getUTCMinutes().toString().padStart(2, '0');
     // EMA GUADA has much more information
-    getLatestObservationData(observationDataGuada, reportData)
+    if (observationDataGuada != null) {
+        getLatestObservationData(observationDataGuada, reportData)
+    }
     // EMA VADO to overwritte the information to a more similar location
-    getLatestObservationData(observationDataVado, reportData)
-    getSkyState(predictionData, reportData)
+    if (observationDataVado != null) {
+        getLatestObservationData(observationDataVado, reportData)
+    }
+    if (predictionData != null) {
+        getSkyState(predictionData, reportData)
+    }
 
     return reportData
+}
 
+function returnNullObject() {
+    return {
+        // --- Data populated by getLatestObservationData ---
+        wind_direction: null,
+        wind_speed: null,
+        gust_direction: null,
+        gust_speed: null,
+        visibility: null,
+        temperature: null,
+        dew_point: null,
+        qnh: null,
+        prec: null,
+        observationTime: null, // Populated by convertToAtisTime(latestObservation.fint)
 
-    // --- YOUR PROCESSING LOGIC GOES HERE ---
-    // You would look at observationData[0].vi (Visibility), predictionData[0].viento (Wind), etc.
-    // and format them into the required ATIS spoken phrases.
-
-    // return {
-    //     // Placeholder values pending actual AEMET JSON mapping
-    //     airport_name: "LERM",
-    //     identifier: "BRAVO",
-    //     time_zulu: time_zulu,
-    //     wind_data: "one eight zero at seven knots",
-    //     visibility: "one zero statute miles",
-    //     weather_and_clouds: "Few clouds at five thousand",
-    //     temperature: "one five",
-    //     dew_point: "zero eight",
-    //     altimeter: "A two niner point eight niner",
-    //     runways_in_use: "05 ARR/DEP",
-    //     special_info: "TRANSITION LEVEL FL SEVEN ZERO. VOR A APPROACH U/S"
-    // };
+        // --- Data populated by getSkyState ---
+        originalSkyDescription: null,
+        sky: null,         // Mapped Octas value
+        phenomenon: null   // Mapped phenomenon string
+    };
 }
 
 function getLatestObservationData(observationData, reportData) {
     const latestObservation = findClosestObservation(observationData)
-    console.log(latestObservation)
     reportData.wind_direction = latestObservation.dv
     reportData.wind_speed = convertMpsToKnots(latestObservation.vv)
     reportData.gust_direction = latestObservation.dmax
@@ -115,7 +149,7 @@ function convertToAtisTime(isoTimeString) {
     const formattedMinutes = String(minutes).padStart(2, '0');
 
     // 4. Construct the final ATIS string.
-    return `${formattedHours}:${formattedMinutes} Z`;
+    return `${formattedHours}:${formattedMinutes}Z`;
 }
 
 /**

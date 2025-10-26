@@ -27,6 +27,25 @@
         .report-box {
             margin-bottom: 30px;
         }
+
+        .raw-data-container {
+            display: flex;
+            /* Enable flex layout */
+            gap: 20px;
+            /* Space between the two columns */
+        }
+
+        .raw-data-box {
+            flex: 1;
+            /* Ensures both boxes take up equal space */
+            min-width: 0;
+            /* Allows the content (pre) to shrink correctly */
+        }
+
+        .raw-data-box h3 {
+            color: #00ffaa;
+            margin-bottom: 5px;
+        }
     </style>
 </head>
 
@@ -35,31 +54,62 @@
     <h1>LERM Terminal Information</h1>
 
     <div class="report-box">
+        <h2>D-ATIS Report (Digital)</h2>
+        <pre id="datis-report">Loading...</pre>
+    </div>
+
+    <div class="report-box">
         <h2>Spoken Voice Report (Full)</h2>
         <pre id="full-report">Loading...</pre>
     </div>
 
     <div class="report-box">
-        <h2>D-ATIS Report (Digital)</h2>
-        <pre id="datis-report">Loading...</pre>
+        <h2>Raw Data Sources</h2>
+        <div class="raw-data-container">
+            <div class="raw-data-box">
+                <h3>AEMET Data Source</h3>
+                <pre id="raw-aemet">Loading...</pre>
+            </div>
+            <div class="raw-data-box">
+                <h3>LERM Data Source</h3>
+                <pre id="raw-lerm">Loading...</pre>
+            </div>
+        </div>
     </div>
 
+
     <script>
-        // Function to fetch and display the report
-        async function fetchAndDisplayReport(endpoint, elementId) {
+        // --- REVISED SCRIPT TO FETCH BOTH REPORTS IN ONE CALL ---
+        async function fetchAllReports() {
             try {
-                // The endpoint '/atis' points to the Pages Function
-                const response = await fetch(endpoint);
-                const text = await response.text();
-                document.getElementById(elementId).textContent = text;
+                // 1. Fetch the unified endpoint
+                const response = await fetch('/atis');
+
+                // Check for HTTP errors
+                if (!response.ok) {
+                    throw new Error(`HTTP Error: ${response.status} ${response.statusText}`);
+                }
+
+                // 2. Parse the JSON response
+                const reports = await response.json();
+
+                // 3. Display the reports (order in script doesn't matter, only the HTML order)
+                document.getElementById('full-report').textContent = reports.fullReport || 'N/A';
+                document.getElementById('datis-report').textContent = reports.datisReport || 'N/A';
+                document.getElementById('raw-aemet').textContent = JSON.stringify(reports.rawAemet, null, 2) || 'N/A';
+                document.getElementById('raw-lerm').textContent = JSON.stringify(reports.rawLerm, null, 2) || 'N/A';
+
             } catch (error) {
-                document.getElementById(elementId).textContent = 'Error loading ATIS report: ' + error.message;
+                const errorMessage = 'Error loading ATIS report: ' + error.message;
+                document.getElementById('full-report').textContent = errorMessage;
+                document.getElementById('datis-report').textContent = errorMessage;
+                document.getElementById('raw-aemet').textContent = errorMessage;
+                document.getElementById('raw-lerm').textContent = errorMessage;
             }
         }
 
-        // Fetch both reports using the Pages Function endpoints
-        fetchAndDisplayReport('/atis', 'full-report');
-        fetchAndDisplayReport('/atis?format=datis', 'datis-report');
+        // Fetch and display the combined report
+        fetchAllReports();
     </script>
 
 </body>

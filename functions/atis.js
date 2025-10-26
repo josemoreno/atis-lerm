@@ -46,46 +46,34 @@ function formatReportForATIS(reportData) {
         LAST_BROADCAST_TIME = reportData.observationTime;
 
     }
-
-    // --- 2. Wind Formatting ---
-    let wind_data = '';
-    // Check if wind speed is 0 kt (Calm)
-    if (reportData.wind_speed < 1.5) { // Assuming < 1.5 kt is effectively Calm
-        wind_data = "WIND CALM";
-    } else {
-        // Wind Direction (DV) should be 3-digits (045) or VRB if variable/missing
-        const direction = reportData.wind_direction ? String(reportData.wind_direction).padStart(3, '0') : "VRB";
-        const speed = Math.round(reportData.wind_speed);
-
-        wind_data = `WIND ${direction} DEGREES AT ${speed} KNOTS`;
-
-        // Add gusts if they are significantly higher than the mean wind speed
-        if (reportData.gust_speed > speed + 5) { // Gust is 5+ knots higher
-            wind_data += ` GUSTING ${Math.round(reportData.gust_speed)} KNOTS`;
-        }
-    }
-
     // --- 3. Sky/Cloud Formatting ---
-    let weather_and_clouds = '';
+    let clouds = '';
+    let clouds_short = '';
+    let weather_phen = '';
     const skyOctas = reportData.sky;
     const phenomenon = reportData.phenomenon;
 
     // Cloud Layer Description (using Octas)
     if (skyOctas === 0) {
-        weather_and_clouds += "SKY CLEAR";
+        clouds += "SKY CLEAR";
+        clouds_short += "SKC";
     } else if (skyOctas <= 2) {
-        weather_and_clouds += "FEW CLOUDS"; // 1-2 Octas
+        clouds += "FEW"; // 1-2 Octas
+        clouds_short += "FEW";
     } else if (skyOctas <= 4) {
-        weather_and_clouds += "SCATTERED CLOUDS"; // 3-4 Octas
+        clouds += "SCATTERED"; // 3-4 Octas
+        clouds_short += "SCT";
     } else if (skyOctas <= 7) {
-        weather_and_clouds += "BROKEN CLOUDS"; // 5-7 Octas
+        clouds += "BROKEN"; // 5-7 Octas
+        clouds_short += "BKN";
     } else { // 8 Octas
-        weather_and_clouds += "OVERCAST";
+        clouds += "OVERCAST";
+        clouds_short += "OVC";
     }
 
     // Significant Weather/Phenomenon (e.g., Rain, Fog, Thunderstorm)
     if (phenomenon && phenomenon !== 'Clear' && phenomenon !== 'Unknown') {
-        weather_and_clouds = `${phenomenon.toUpperCase()} AND ${weather_and_clouds}`;
+        weather_phen = `${phenomenon.toUpperCase()}`;
     }
 
     // --- 4. Altimeter Formatting (QNH) ---
@@ -99,11 +87,19 @@ function formatReportForATIS(reportData) {
         airport_name: "LERM",
         identifier: currentIdentifier,
         time_zulu: reportData.observationTime, // Already in HH:MM Z format
-        wind_data: wind_data,
-        visibility: `${reportData.visibility} KILOMETRES`, // Assuming visibility is numeric
-        weather_and_clouds: weather_and_clouds,
-        temperature: `${reportData.temperature} CELSIUS`,
-        dew_point: `${reportData.dew_point} CELSIUS`,
+        wind_direction: reportData.wind_direction,
+        wind_dir_f: String(reportData.wind_direction).padStart(3, '0'),
+        wind_speed: reportData.wind_speed,
+        wind_vrb: reportData.wind_vrb,
+        gust_direction: reportData.gust_direction,
+        gust_dir_f: String(reportData.gust_direction).padStart(3, '0'),
+        gust_speed: Math.round(reportData.gust_speed),
+        visibility: reportData.visibility, // Assuming visibility is numeric
+        clouds: clouds,
+        clouds_short: clouds_short,
+        phen: weather_phen,
+        temperature: `${Math.round(reportData.temperature)}`,
+        dew_point: `${Math.round(reportData.dew_point)}`,
         altimeter: altimeter_qnh,
         runways_in_use: determineActiveRunway(reportData.wind_direction), // Use the runway function
         special_info: null // Placeholder for NOTAMs, facilities, etc.
@@ -114,19 +110,24 @@ function formatReportForATIS(reportData) {
 class ATISReport {
     constructor(data) {
         Object.assign(this, data);
-        this.acknowledgment = `ADVISE ON INITIAL CONTACT YOU HAVE INFO ${this.identifier.toUpperCase()}`;
+        this.acknowledgment = `CONFIRM ATIS INFO ${this.identifier.toUpperCase()} ON INITIAL CONTACT`;
     }
 
     get_full_report() {
+        let wind_vrb = ""
+        if (this.wind_vrb) {
+            wind_vrb = `Variable from ${this.wind_vrb}`.replace("/", " to ").replace("VRB ", "")
+        }
         let report_parts = [
-            `${this.airport_name} Terminal Information ${this.identifier}.`,
-            `Time ${this.time_zulu} Zulu.`,
-            `Wind ${this.wind_data}.`,
-            `Visibility ${this.visibility}.`,
-            `${this.weather_and_clouds}.`,
-            `Temperature ${this.temperature}, dew point ${this.dew_point}.`,
-            `Altimeter ${this.altimeter}.`,
-            `Runway(s) in use: ${this.runways_in_use}.`
+            `${this.airport_name} Terminal Information ${this.identifier}.\n`,
+            `Time ${this.time_zulu}\n`.replace("Z", " Zulu."),
+            `Visual Approach. Runway in use: ${this.runways_in_use}. Transition level 140.\n`,
+            `Frecuency 132.325\n`,
+            `Wind ${this.wind_dir_f} at ${this.wind_speed} knots. Gusting ${this.gust_dir_f} at ${this.gust_speed} knots. ${wind_vrb}\n`,
+            `Visibility ${this.visibility} kilometres.\n`,
+            `Clouds ${this.clouds}. ${this.phen}\n`,
+            `Temperature ${this.temperature} degrees Celsius, dew point ${this.dew_point} degrees Celsius.\n`,
+            `${this.altimeter}.\n`
         ];
 
         if (this.special_info) {
@@ -140,24 +141,33 @@ class ATISReport {
 
     get_datis_report() {
         const identifierUpper = this.identifier.toUpperCase();
-        const wind_brief = this.wind_data.toUpperCase().replace(" KNOTS", "KT").replace(" AT ", " ");
-        const altimeter_brief = this.altimeter.toUpperCase().replace("ALTIMETER ", "A").replace("QNH ", "Q").replace(" POINT ", ".");
+        let vis_clouds = ""
+        if (this.visibility > 10 && this.clouds == "SKY CLEAR") {
+            vis_clouds = "CAVOK"
+        } else {
+            if (this.phen) {
+                vis_clouds = `VIS ${this.visibility} KM\n${this.phen}\nClouds ${this.clouds_short}`
+            } else {
+                vis_clouds = `VIS ${this.visibility} KM\nClouds ${this.clouds_short}`
+
+            }
+        }
 
         let datis_lines = [
-            `ATIS ${identifierUpper} ${this.time_zulu}Z`,
-            `RWY IN USE: ${this.runways_in_use.toUpperCase()}`,
-            `WIND: ${wind_brief}`,
-            `VIS: ${this.visibility.toUpperCase().replace(' KILOMETRES', 'KM')}`,
-            `WX/CLD: ${this.weather_and_clouds.toUpperCase().replace('SKY CLEAR', 'SKC')}`,
-            `TEMP/DP: ${this.temperature.toUpperCase().replace(' ', '')}/${this.dew_point.toUpperCase().replace(' ', '')}C`,
-            `ALTM: ${altimeter_brief}`,
+            `LERM ATIS INFORMATION ${identifierUpper} ${this.time_zulu}`.replace(":", ""),
+            `VFR APP RWY ${this.runways_in_use.toUpperCase()} TL 140`,
+            `FREC 123.325`,
+            `WIND ${this.wind_dir_f}/${this.wind_speed} ${this.gust_dir_f}/${this.gust_speed} ${this.wind_vrb}`,
+            `${vis_clouds}`,
+            `TEMP/DP ${this.temperature.toUpperCase().replace(' ', '')}/${this.dew_point.toUpperCase().replace(' ', '')}`,
+            `${this.altimeter}`,
         ];
 
         if (this.special_info) {
             datis_lines.push(`REMARKS: ${this.special_info.toUpperCase()}`);
         }
 
-        datis_lines.push(`ACK: ${this.acknowledgment.toUpperCase()}`);
+        datis_lines.push(`${this.acknowledgment.toUpperCase()}`);
 
         return datis_lines.join("\n");
     }
@@ -166,10 +176,12 @@ class ATISReport {
 
 // --- CLOUDFLARE PAGES FUNCTION HANDLER ---
 export async function onRequest(context) {
-    const url = new URL(context.request.url);
-    const format = url.searchParams.get('format');
+    // Note: The URL and format parsing are no longer necessary for the primary logic
+    // const url = new URL(context.request.url);
+    // const format = url.searchParams.get('format'); 
 
     // 1. Securely retrieve the API Key from environment variables
+    // Re-enabling environment variable usage (recommended for production)
     const API_KEY = context.env.AEMET_API_KEY;
 
     if (!API_KEY) {
@@ -177,53 +189,134 @@ export async function onRequest(context) {
     }
 
     try {
-        // 2. Fetch and process the weather data using the external module
+        // 2. Fetch and process the weather data (all steps remain the same)
         const aemetData = await getFormattedAtisData(API_KEY);
-        console.log(aemetData)
         const LERMData = await fetchAndParseLERMConditions();
-        console.log(LERMData)
-        const rawData = mergeEMAs(aemetData, LERMData)
-        console.log(rawData)
-        const atisData = formatReportForATIS(rawData)
+        const rawData = mergeEMAs(aemetData, LERMData);
+        const atisData = formatReportForATIS(rawData);
+
         // 3. Generate the ATIS report object
         const report = new ATISReport(atisData);
 
-        // 4. Select and format the final output
-        const reportText = format === 'datis'
-            ? report.get_datis_report()
-            : report.get_full_report();
+        // 4. Generate BOTH report formats
+        const fullReport = report.get_full_report();
+        const datisReport = report.get_datis_report();
 
-        return new Response(reportText, {
+        // 5. Return a single JSON response containing both reports
+        const combinedReports = {
+            fullReport: fullReport,
+            datisReport: datisReport,
+            rawAemet: aemetData,
+            rawLerm: LERMData
+        };
+
+        return new Response(JSON.stringify(combinedReports), {
             headers: {
-                'Content-Type': 'text/plain',
+                // IMPORTANT: Set Content-Type to application/json
+                'Content-Type': 'application/json',
                 'Cache-Control': 'no-cache, no-store, must-revalidate'
             },
         });
 
     } catch (error) {
         console.error("ATIS Generation Error:", error.message);
-        return new Response(`Server Error fetching weather data: ${error.message}`, {
+        // Return a JSON error response structure for client consistency
+        const errorResponse = {
+            fullReport: "SERVER ERROR: " + error.message,
+            datisReport: "SERVER ERROR: " + error.message
+        };
+        return new Response(JSON.stringify(errorResponse), {
             status: 500,
-            headers: { 'Content-Type': 'text/plain' }
+            headers: { 'Content-Type': 'application/json' }
         });
     }
 }
 
 function mergeEMAs(aemetData, LERMData) {
-    const report = aemetData
+    const report = { ...aemetData };
     // If LERM EMA is online, overwrite some of the values
     if (LERMData.observationTime_raw) {
         report.observationTime = LERMData.observationTime_atis
         report.temperature = (LERMData.temperature_c) ? LERMData.temperature_c : report.temperature
-        if (LERMData.wind_speed) {
-            reportData.wind_speed = LERMData.wind_speed_knots
-            reportData.wind_direction = LERMData.wind_direction_degrees
+        report.vrb = ""
+        if (LERMData.wind_speed_knots) {
+            report.wind_speed = LERMData.wind_speed_knots
+            report.wind_vrb = getVRBWind(report.wind_direction, LERMData.wind_direction_degrees)
+            report.wind_direction = LERMData.wind_direction_degrees
         }
         report.qnh = (LERMData.qnh_hpa) ? LERMData.qnh_hpa : report.qnh
         report.sunrise = LERMData.sunrise
         report.sunset = LERMData.sunset
     }
     return report
+}
+
+/**
+ * Calculates and formats wind variability (VRB) for two wind directions, 
+ * using the shortest angular difference (circular math).
+ * * @param {number} windDir1 - First wind direction in degrees (0-360).
+ * @param {number} windDir2 - Second wind direction in degrees (0-360).
+ * @returns {string} Formatted variability string (e.g., "VRB 360/023") or "" if no variability.
+ */
+function getVRBWind(windDir1, windDir2) {
+    // 1. Initial Checks and Rounding
+    if (windDir1 == null || windDir2 == null) {
+        return "";
+    }
+
+    // Round the input directions to the nearest integer
+    const dir1 = Math.round(windDir1);
+    const dir2 = Math.round(windDir2);
+
+    // If directions are identical, there is no variability to report
+    if (dir1 === dir2) {
+        return "";
+    }
+
+    // 2. Calculate the Shortest Angular Difference (The Core Fix)
+
+    // Calculate the absolute difference (straight line difference)
+    const diff = Math.abs(dir1 - dir2);
+
+    // The shortest path is the minimum of (straight difference, 360 - straight difference).
+    const shortestDiff = Math.min(diff, 360 - diff);
+
+    // If the shortest difference is greater than 60 degrees, variability is typically reported.
+    // However, for ATIS/METAR, variability reporting (e.g., 340V030) usually occurs 
+    // when the difference is > 60 degrees AND the speed is > 3 knots.
+    // For your function, we focus only on the shortest angular report format.
+
+    // 3. Determine the Reporting Order (Lowest degree first)
+
+    let minDir;
+    let maxDir;
+
+    // Case 1: The shortest path does NOT cross the 360/0 boundary (e.g., 100 and 150)
+    if (diff === shortestDiff) {
+        minDir = Math.min(dir1, dir2);
+        maxDir = Math.max(dir1, dir2);
+    }
+    // Case 2: The shortest path DOES cross the 360/0 boundary (e.g., 360 and 23)
+    // The "lowest" direction is the one near 360 (or 0), and the "highest" is the other.
+    else {
+        // When crossing 360/0, the smaller number (e.g., 23) is the max, 
+        // and the larger number (e.g., 360) is the min in the sequence.
+        minDir = Math.max(dir1, dir2); // The degree closer to 360 (e.g., 360)
+        maxDir = Math.min(dir1, dir2); // The degree closer to 0 (e.g., 23)
+    }
+
+    // 4. Handle 360/0 Reporting Convention
+    // Aviation standards prefer 000 over 360, but since the raw data might use 360,
+    // we convert the final output 360 back to 000 if it's the smaller number.
+    // Since your request specifically mentioned VRB 360/23, we'll maintain that format, 
+    // but ensure the order is correct.
+
+    // Format the degrees to be three digits (e.g., 23 -> 023)
+    const formattedMin = String(minDir).padStart(3, '0');
+    const formattedMax = String(maxDir).padStart(3, '0');
+
+    // Return the required VRB format
+    return "VRB " + formattedMin + "/" + formattedMax;
 }
 
 
