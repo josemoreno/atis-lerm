@@ -110,7 +110,7 @@ function parseCleanConditions(rawText) {
  *
  * @returns {Promise<Object>} A promise that resolves to the structured weather data.
  */
-async function fetchAndParseLERMConditions() {
+export async function fetchAndParseLERMConditions() {
     const URL = 'https://www.aeroclubdeguadalajara.es/meteo.php';
 
     try {
