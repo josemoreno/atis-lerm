@@ -1,6 +1,7 @@
 // --- AEMET API Constants ---
 const COD_ROBLE = "19239";
 const ID_EMA_PANTANO_VADO = "3103";
+const ID_EMA_GUADA = "3168D"
 const AEMET_API = "https://opendata.aemet.es/opendata";
 const ENDPOINT_PRED_MUN = "/api/prediccion/especifica/municipio/horaria/";
 const ENDPOINT_DATA_IDEMA = "/api/observacion/convencional/datos/estacion/";
@@ -32,13 +33,16 @@ async function fetchAemetJson(initialUrl, headers) {
  * @param {object} observationData JSON data from the conventional observation endpoint.
  * @returns {object} Data structured for the ATISReport constructor.
  */
-function processAemetData(predictionData, observationData) {
+function processAemetData(predictionData, observationDataVado, observationDataGuada) {
     let reportData = {}
     // Example: Getting current time (a quick way to get ZULU time)
     const now = new Date();
     reportData.time = now.getUTCHours().toString().padStart(2, '0') +
         now.getUTCMinutes().toString().padStart(2, '0');
-    getLatestObservationData(observationData, reportData)
+    // EMA GUADA has much more information
+    getLatestObservationData(observationDataGuada, reportData)
+    // EMA VADO to overwritte the information to a more similar location
+    getLatestObservationData(observationDataVado, reportData)
     getSkyState(predictionData, reportData)
 
     return reportData
@@ -337,9 +341,11 @@ export async function getFormattedAtisData(apiKey) {
     const predictionData = await fetchAemetJson(predictionUrl, headers);
 
     // 2. Fetch Observation Data
-    const observationUrl = `${AEMET_API}${ENDPOINT_DATA_IDEMA}${ID_EMA_PANTANO_VADO}`;
-    const observationData = await fetchAemetJson(observationUrl, headers);
+    const observationUrlVado = `${AEMET_API}${ENDPOINT_DATA_IDEMA}${ID_EMA_PANTANO_VADO}`;
+    const observationDataVado = await fetchAemetJson(observationUrlVado, headers);
+    const observationUrlGuada = `${AEMET_API}${ENDPOINT_DATA_IDEMA}${ID_EMA_GUADA}`;
+    const observationDataGuada = await fetchAemetJson(observationUrlGuada, headers);
 
     // 3. Process and format the data
-    return processAemetData(predictionData, observationData);
+    return processAemetData(predictionData, observationDataVado, observationDataGuada);
 }
