@@ -75,10 +75,14 @@ function getLatestObservationData(observationData, reportData) {
     reportData.wind_speed = convertMpsToKnots(latestObservation.vv)
     reportData.gust_direction = latestObservation.dmax
     reportData.gust_speed = convertMpsToKnots(latestObservation.vmax)
-    reportData.visibility = latestObservation.vis
+    if (latestObservation.vis) {
+        reportData.visibility = latestObservation.vis
+    }
     reportData.temperature = latestObservation.ta
     reportData.dew_point = latestObservation.tpr
-    reportData.qnh = latestObservation.pres_nmar
+    if (latestObservation.pres_nmar) {
+        reportData.qnh = latestObservation.pres_nmar
+    }
     reportData.prec = latestObservation.prec
     reportData.observationTime = convertToAtisTime(latestObservation.fint)
 }
