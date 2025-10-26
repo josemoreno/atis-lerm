@@ -66,6 +66,7 @@ function processAemetData(predictionData, observationData) {
 
 function getLatestObservationData(observationData, reportData) {
     const latestObservation = findClosestObservation(observationData)
+    console.log(latestObservation)
     reportData.wind_direction = latestObservation.dv
     reportData.wind_speed = convertMpsToKnots(latestObservation.vv)
     reportData.gust_direction = latestObservation.dmax
