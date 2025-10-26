@@ -141,7 +141,7 @@ class ATISReport {
             `${this.airport_name} Terminal Information ${this.identifier}.\n`,
             `Time ${this.time_zulu}\n`.replace("Z", " Zulu."),
             `Visual Approach. Runway in use: ${this.runways_in_use}. Transition level 140.\n`,
-            `Frecuency 132.325\n`,
+            `Frecuency 123.325\n`,
             `Wind ${this.wind_dir_f} at ${this.wind_speed} knots. Gusting ${this.gust_dir_f} at ${this.gust_speed} knots. ${wind_vrb}\n`,
             `${vis_clouds}`,
             `Temperature ${this.temperature} degrees Celsius, dew point ${this.dew_point} degrees Celsius.\n`,
