@@ -341,7 +341,7 @@ function convertMpsToKnots(metersPerSecond) {
     // Perform the conversion
     const knots = metersPerSecond * CONVERSION_FACTOR;
 
-    return knots;
+    return Math.round(knots);
 }
 
 function findClosestObservation(observationData) {

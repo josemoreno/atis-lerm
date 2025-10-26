@@ -114,6 +114,10 @@ class ATISReport {
     }
 
     get_full_report() {
+        let wind_gust = ""
+        if (this.gust_speed > 0) {
+            wind_gust = `Gusting ${this.gust_dir_f} at ${this.gust_speed} knots`
+        }
         let wind_vrb = ""
         if (this.wind_vrb) {
             wind_vrb = `Variable from ${this.wind_vrb}`.replace("/", " to ").replace("VRB ", "")
@@ -123,16 +127,16 @@ class ATISReport {
             vis_clouds = "CAVOK\n"
         } else if (this.clouds == "SKY CLEAR") {
             if (this.phen) {
-                vis_clouds = `Visibility ${this.visibility} kilometers\n${this.phen}\n${this.clouds}`
+                vis_clouds = `Visibility ${this.visibility} kilometers\n${this.phen}\n${this.clouds}\n`
             } else {
-                vis_clouds = `Visibility ${this.visibility} kilometers\nClouds ${this.clouds}`
+                vis_clouds = `Visibility ${this.visibility} kilometers\nClouds ${this.clouds}\n`
 
             }
         } else {
             if (this.phen) {
-                vis_clouds = `Visibility ${this.visibility} kilometers\n${this.phen}\nClouds ${this.clouds}`
+                vis_clouds = `Visibility ${this.visibility} kilometers\n${this.phen}\nClouds ${this.clouds}\n`
             } else {
-                vis_clouds = `Visibility ${this.visibility} kilometers\nClouds ${this.clouds}`
+                vis_clouds = `Visibility ${this.visibility} kilometers\nClouds ${this.clouds}\n`
 
             }
         }
@@ -142,7 +146,7 @@ class ATISReport {
             `Time ${this.time_zulu}\n`.replace("Z", " Zulu."),
             `Visual Approach. Runway in use: ${this.runways_in_use}. Transition level 140.\n`,
             `Frequency 123.325\n`,
-            `Wind ${this.wind_dir_f} at ${this.wind_speed} knots. Gusting ${this.gust_dir_f} at ${this.gust_speed} knots. ${wind_vrb}\n`,
+            `Wind ${this.wind_dir_f} at ${this.wind_speed} knots. ${wind_gust}. ${wind_vrb}\n`,
             `${vis_clouds}`,
             `Temperature ${this.temperature} degrees Celsius, dew point ${this.dew_point} degrees Celsius.\n`,
             `${this.altimeter}.\n`
@@ -170,12 +174,16 @@ class ATISReport {
 
             }
         }
-
+        let wind_gust = ""
+        if (this.gust_speed > 0) {
+            wind_gust = `${this.gust_dir_f}/${this.gust_speed}`
+        }
+        console.log(this.wind_vrb)
         let datis_lines = [
             `LERM ATIS INFORMATION ${identifierUpper} ${this.time_zulu}`.replace(":", ""),
             `VFR APP RWY ${this.runways_in_use.toUpperCase()} TL 140`,
             `FREQ 123.325`,
-            `WIND ${this.wind_dir_f}/${this.wind_speed} ${this.gust_dir_f}/${this.gust_speed} ${this.wind_vrb}`,
+            `WIND ${this.wind_dir_f}/${this.wind_speed} ${wind_gust} ${this.wind_vrb}`,
             `${vis_clouds}`,
             `TEMP/DP ${this.temperature.toUpperCase().replace(' ', '')}/${this.dew_point.toUpperCase().replace(' ', '')}`,
             `${this.altimeter}`,
@@ -252,16 +260,16 @@ export async function onRequest(context) {
 function mergeEMAs(aemetData, LERMData) {
     const report = { ...aemetData };
     // If LERM EMA is online, overwrite some of the values
+    report.wind_vrb = "";
     if (LERMData.observationTime_raw) {
         report.observationTime = LERMData.observationTime_atis
         report.temperature = (LERMData.temperature_c) ? LERMData.temperature_c : report.temperature
-        report.vrb = ""
-        if (LERMData.wind_speed_knots) {
+        if (LERMData.wind_speed_knots != null) {
             report.wind_speed = LERMData.wind_speed_knots
             report.wind_vrb = getVRBWind(report.wind_direction, LERMData.wind_direction_degrees)
             report.wind_direction = LERMData.wind_direction_degrees
         }
-        report.qnh = (LERMData.qnh_hpa) ? LERMData.qnh_hpa : report.qnh
+        report.qnh = (LERMData.qnh_hpa != null) ? LERMData.qnh_hpa : report.qnh
         report.sunrise = LERMData.sunrise
         report.sunset = LERMData.sunset
     }
