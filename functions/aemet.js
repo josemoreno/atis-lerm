@@ -132,25 +132,19 @@ function mapAemetToOctasAndPhenomenon(aemetDescription) {
     // --- Octas Mapping ---
     if (description.includes("despejado")) {
         skyOctas = 0;
-        phenomenon = "Clear";
     } else if (description.includes("poco nuboso")) {
         skyOctas = 2;
-        phenomenon = "Few Clouds";
     } else if (description.includes("nubes altas")) {
         skyOctas = 1;
         phenomenon = "High Clouds";
     } else if (description.includes("intervalos nubosos")) {
         skyOctas = 4;
-        phenomenon = "Scattered Clouds";
     } else if (description.includes("nuboso")) {
         skyOctas = 6;
-        phenomenon = "Cloudy";
     } else if (description.includes("muy nuboso")) {
         skyOctas = 7;
-        phenomenon = "Very Cloudy";
     } else if (description.includes("cubierto")) {
         skyOctas = 8;
-        phenomenon = "Overcast";
     }
 
     // --- Phenomenon Overrides ---

@@ -1,5 +1,6 @@
 // Import the ATIS data fetching function from the local module
 import { getFormattedAtisData } from './aemet.js';
+import { fetchAndParseLERMConditions } from './robleEMA.js'
 
 // --- ATIS IDENTIFIER LOGIC ---
 const ATIS_IDENTIFIERS = [
@@ -177,11 +178,10 @@ export async function onRequest(context) {
 
     try {
         // 2. Fetch and process the weather data using the external module
-        const rawData = await getFormattedAtisData(API_KEY);
-        console.log(rawData)
+        const aemetData = await getFormattedAtisData(API_KEY);
+        const LERMData = await fetchAndParseLERMConditions();
+        rawData = mergeEMAs(aemetData, LERMData)
         const atisData = formatReportForATIS(rawData)
-        console.log(atisData)
-
         // 3. Generate the ATIS report object
         const report = new ATISReport(atisData);
 
@@ -204,6 +204,23 @@ export async function onRequest(context) {
             headers: { 'Content-Type': 'text/plain' }
         });
     }
+}
+
+function mergeEMAs(aemetData, LERMData) {
+    const report = aemetData
+    // If LERM EMA is online, overwrite some of the values
+    if (LERMData.observationTime_raw) {
+        report.observationTime = LERMData.observationTime_atis
+        report.temperature = (LERMData.temperature_c) ? LERMData.temperature_c : report.temperature
+        if (LERMData.wind_speed) {
+            reportData.wind_speed = LERMData.wind_speed_knots
+            reportData.wind_direction = LERMData.wind_direction_degrees
+        }
+        report.qnh = (LERMData.qnh_hpa) ? LERMData.qnh_hpa : report.qnh
+        report.sunrise = LERMData.sunrise
+        report.sunset = LERMData.sunset
+    }
+    return report
 }
 
 
