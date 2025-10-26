@@ -118,14 +118,32 @@ class ATISReport {
         if (this.wind_vrb) {
             wind_vrb = `Variable from ${this.wind_vrb}`.replace("/", " to ").replace("VRB ", "")
         }
+        let vis_clouds = ''
+        if (this.visibility > 10 && this.clouds == "SKY CLEAR") {
+            vis_clouds = "CAVOK\n"
+        } else if (this.clouds == "SKY CLEAR") {
+            if (this.phen) {
+                vis_clouds = `Visibility ${this.visibility} kilometers\n${this.phen}\n${this.clouds}`
+            } else {
+                vis_clouds = `Visibility ${this.visibility} kilometers\nClouds ${this.clouds}`
+
+            }
+        } else {
+            if (this.phen) {
+                vis_clouds = `Visibility ${this.visibility} kilometers\n${this.phen}\nClouds ${this.clouds}`
+            } else {
+                vis_clouds = `Visibility ${this.visibility} kilometers\nClouds ${this.clouds}`
+
+            }
+        }
+
         let report_parts = [
             `${this.airport_name} Terminal Information ${this.identifier}.\n`,
             `Time ${this.time_zulu}\n`.replace("Z", " Zulu."),
             `Visual Approach. Runway in use: ${this.runways_in_use}. Transition level 140.\n`,
             `Frecuency 132.325\n`,
             `Wind ${this.wind_dir_f} at ${this.wind_speed} knots. Gusting ${this.gust_dir_f} at ${this.gust_speed} knots. ${wind_vrb}\n`,
-            `Visibility ${this.visibility} kilometres.\n`,
-            `Clouds ${this.clouds}. ${this.phen}\n`,
+            `${vis_clouds}`,
             `Temperature ${this.temperature} degrees Celsius, dew point ${this.dew_point} degrees Celsius.\n`,
             `${this.altimeter}.\n`
         ];
@@ -183,7 +201,6 @@ export async function onRequest(context) {
     // 1. Securely retrieve the API Key from environment variables
     // Re-enabling environment variable usage (recommended for production)
     const API_KEY = context.env.AEMET_API_KEY;
-
     if (!API_KEY) {
         return new Response("Configuration Error: AEMET_API_KEY secret is missing.", { status: 500 });
     }
