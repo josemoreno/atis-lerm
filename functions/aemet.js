@@ -79,7 +79,9 @@ function getLatestObservationData(observationData, reportData) {
         reportData.visibility = latestObservation.vis
     }
     reportData.temperature = latestObservation.ta
-    reportData.dew_point = latestObservation.tpr
+    if (latestObservation.tpr) {
+        reportData.dew_point = latestObservation.tpr
+    }
     if (latestObservation.pres_nmar) {
         reportData.qnh = latestObservation.pres_nmar
     }
