@@ -30,16 +30,12 @@
 
         .raw-data-container {
             display: flex;
-            /* Enable flex layout */
             gap: 20px;
-            /* Space between the two columns */
         }
 
         .raw-data-box {
             flex: 1;
-            /* Ensures both boxes take up equal space */
             min-width: 0;
-            /* Allows the content (pre) to shrink correctly */
         }
 
         .raw-data-box h3 {
@@ -77,27 +73,86 @@
         </div>
     </div>
 
-
     <script>
-        // --- REVISED SCRIPT TO FETCH BOTH REPORTS IN ONE CALL ---
+        // --- TEXT-TO-SPEECH FUNCTION (Remains the same) ---
+        /**
+         * Converts a string of text into speech using the browser's native Web Speech API.
+         */
+        function speakText(text, lang = 'en-US', rate = 1.0) {
+            if ('speechSynthesis' in window && text) {
+                window.speechSynthesis.cancel();
+
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = lang;
+                utterance.rate = rate;
+
+                window.speechSynthesis.onvoiceschanged = () => {
+                    const voices = window.speechSynthesis.getVoices();
+                    const targetVoice = voices.find(voice => voice.lang === lang || voice.lang.startsWith(lang.substring(0, 2)));
+                    if (targetVoice) {
+                        utterance.voice = targetVoice;
+                    }
+                };
+
+                window.speechSynthesis.speak(utterance);
+            } else {
+                console.warn("Web Speech API not supported or no text provided.");
+            }
+        }
+
+        // --- NEW: FORMATTING FUNCTION FOR ATIS READ-BACK ---
+        /**
+         * Applies aviation read-back conventions to the spoken text.
+         */
+        function formatSpokenText(text) {
+            if (!text) return "";
+
+            // 1. Remove ':' from time (e.g., 18:50Z becomes 1850Z)
+            let formattedText = text.replace(/(\d{1,2}):(\d{2}Z)/g, '$1 $2');
+
+            // 2. Replace '.' from frequencies/decimals with the word "decimal"
+            // This targets most numeric decimals not already handled by a specific rule.
+            formattedText = formattedText.replace(/(\d)\.(\d)/g, '$1 decimal $2');
+
+            // 3. Separate digits so they are read one by one (e.g., QNH 1021 becomes QNH one zero two one)
+            // This targets sequences of 3 or more digits (like QNH, or large visibility).
+            formattedText = formattedText.replace(/(\b\d{3,}\b)/g, (match) => {
+                return match.split('').join(' ');
+            });
+
+            // 4. Ensure QNH is pronounced "Kyu En Eych" not "Kwench"
+            formattedText = formattedText.replace(/QNH/g, 'Q N H');
+
+            return formattedText;
+        }
+
+
+        // --- REVISED SCRIPT TO FETCH AND SPEAK REPORTS ---
         async function fetchAllReports() {
+            let fullReportText = 'Error loading report.';
+
             try {
-                // 1. Fetch the unified endpoint
                 const response = await fetch('/atis');
 
-                // Check for HTTP errors
                 if (!response.ok) {
                     throw new Error(`HTTP Error: ${response.status} ${response.statusText}`);
                 }
 
-                // 2. Parse the JSON response
                 const reports = await response.json();
 
-                // 3. Display the reports (order in script doesn't matter, only the HTML order)
-                document.getElementById('full-report').textContent = reports.fullReport || 'N/A';
+                fullReportText = reports.fullReport || 'N/A';
+
+                // 🌟 STEP 1: Format the text for speech synthesis 🌟
+                const spokenText = formatSpokenText(fullReportText);
+
+                // 3. Display the reports and raw data
+                document.getElementById('full-report').textContent = fullReportText;
                 document.getElementById('datis-report').textContent = reports.datisReport || 'N/A';
                 document.getElementById('raw-aemet').textContent = JSON.stringify(reports.rawAemet, null, 2) || 'N/A';
                 document.getElementById('raw-lerm').textContent = JSON.stringify(reports.rawLerm, null, 2) || 'N/A';
+
+                // 🌟 STEP 2: Synthesize the formatted text 🌟
+                speakText(spokenText, 'en-US', 0.9); // Use en-US for better pronunciation of aviation terms like QNH
 
             } catch (error) {
                 const errorMessage = 'Error loading ATIS report: ' + error.message;
@@ -105,6 +160,9 @@
                 document.getElementById('datis-report').textContent = errorMessage;
                 document.getElementById('raw-aemet').textContent = errorMessage;
                 document.getElementById('raw-lerm').textContent = errorMessage;
+
+                // Speak the error message
+                speakText(errorMessage, 'en-US', 0.9);
             }
         }
 
