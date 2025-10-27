@@ -102,7 +102,7 @@ function formatReportForATIS(reportData) {
         gust_speed: Math.round(reportData.gust_speed),
         visibility: reportData.visibility, // Assuming visibility is numeric
         clouds: reportData.clouds.join(", "),
-        clouds_short: reportData.clouds_short.join("\t\n"),
+        clouds_short: reportData.clouds_short.join(" "),
         phen: weather_phen,
         temperature: `${Math.round(reportData.temperature)}`,
         dew_point: `${Math.round(reportData.dew_point)}`,
