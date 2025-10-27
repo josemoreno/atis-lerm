@@ -49,8 +49,8 @@ function formatReportForATIS(reportData) {
 
     }
     // --- 3. Sky/Cloud Formatting ---
-    let clouds = '';
-    let clouds_short = '';
+    // let clouds = '';
+    // let clouds_short = '';
     let weather_phen = '';
     // const skyOctas = reportData.sky;
     const phenomenon = reportData.phenomenon;
@@ -83,6 +83,10 @@ function formatReportForATIS(reportData) {
     // Assuming the input 'qnh' is in hPa (e.g., 1013), we report it as QNH.
     // Altimeter setting is usually rounded to the nearest integer.
     const altimeter_qnh = `QNH ${Math.round(reportData.qnh)}`;
+    let special_info = null;
+    if (reportData.prec > 2) {
+        special_info = "BRAKING ACTION ADVISORIES ARE IN EFFECT";
+    }
 
     // --- 5. Final Report Object Construction ---
     return {
@@ -104,7 +108,7 @@ function formatReportForATIS(reportData) {
         dew_point: `${Math.round(reportData.dew_point)}`,
         altimeter: altimeter_qnh,
         runways_in_use: determineActiveRunway(reportData.wind_direction), // Use the runway function
-        special_info: null // Placeholder for NOTAMs, facilities, etc.
+        special_info: special_info // Placeholder for NOTAMs, facilities, etc.
     };
 }
 
@@ -155,7 +159,7 @@ class ATISReport {
         ];
 
         if (this.special_info) {
-            report_parts.push(`${this.special_info}.`);
+            report_parts.push(`${this.special_info}.\n`);
         }
 
         report_parts.push(`${this.acknowledgment}.`);
@@ -192,7 +196,7 @@ class ATISReport {
         ];
 
         if (this.special_info) {
-            datis_lines.push(`REMARKS: ${this.special_info.toUpperCase()}`);
+            datis_lines.push(`${this.special_info.toUpperCase()}`);
         }
 
         datis_lines.push(`${this.acknowledgment.toUpperCase()}`);
