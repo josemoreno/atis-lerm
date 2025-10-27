@@ -48,35 +48,6 @@ function formatReportForATIS(reportData) {
         LAST_BROADCAST_TIME = reportData.observationTime;
 
     }
-    // --- 3. Sky/Cloud Formatting ---
-    // let clouds = '';
-    // let clouds_short = '';
-    let weather_phen = '';
-    // const skyOctas = reportData.sky;
-    const phenomenon = reportData.phenomenon;
-
-    // // Cloud Layer Description (using Octas)
-    // if (skyOctas === 0) {
-    //     clouds += "SKY CLEAR";
-    //     clouds_short += "SKC";
-    // } else if (skyOctas <= 2) {
-    //     clouds += "FEW"; // 1-2 Octas
-    //     clouds_short += "FEW";
-    // } else if (skyOctas <= 4) {
-    //     clouds += "SCATTERED"; // 3-4 Octas
-    //     clouds_short += "SCT";
-    // } else if (skyOctas <= 7) {
-    //     clouds += "BROKEN"; // 5-7 Octas
-    //     clouds_short += "BKN";
-    // } else { // 8 Octas
-    //     clouds += "OVERCAST";
-    //     clouds_short += "OVC";
-    // }
-
-    // Significant Weather/Phenomenon (e.g., Rain, Fog, Thunderstorm)
-    if (phenomenon && phenomenon !== 'Clear' && phenomenon !== 'Unknown') {
-        weather_phen = `${phenomenon.toUpperCase()}`;
-    }
 
     // --- 4. Altimeter Formatting (QNH) ---
     // QNH is often reported in hPa (millibars) but sometimes converted to inches Hg (inHg).
@@ -101,9 +72,9 @@ function formatReportForATIS(reportData) {
         gust_dir_f: String(reportData.gust_direction).padStart(3, '0'),
         gust_speed: Math.round(reportData.gust_speed),
         visibility: reportData.visibility, // Assuming visibility is numeric
-        clouds: reportData.clouds.join(", "),
-        clouds_short: reportData.clouds_short.join(" "),
-        phen: weather_phen,
+        clouds: reportData.clouds,
+        clouds_short: reportData.clouds_short,
+        phen: reportData.phenomenon,
         temperature: `${Math.round(reportData.temperature)}`,
         dew_point: `${Math.round(reportData.dew_point)}`,
         altimeter: altimeter_qnh,
@@ -228,10 +199,13 @@ export async function onRequest(context) {
         const weatherReport = new WeatherReportData()
         // 2. Fetch and process the weather data (all steps remain the same)
         const windyData = await fetchWindyData(WINDY_API_KEY)
+        console.log(windyData)
         weatherReport.mergeData(windyData);
         const aemetData = await getFormattedAtisData(AEMET_API_KEY);
+        console.log(aemetData)
         weatherReport.mergeData(aemetData);
         const LERMData = await fetchAndParseLERMConditions();
+        console.log(LERMData)
         weatherReport.wind_vrb = getVRBWind(weatherReport.wind_direction, LERMData.wind_direction);
         weatherReport.mergeData(LERMData);
         const atisData = formatReportForATIS(weatherReport);

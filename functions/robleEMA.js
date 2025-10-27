@@ -206,49 +206,103 @@ function convertToAtisTime(rawTimeString) {
  * @param {string} timeZoneIANA The IANA timezone code (e.g., "America/Los_Angeles").
  * @returns {string} The time formatted as "HH:MM Z" (Zulu time), or "Invalid Date".
  */
+/**
+ * Converts a specific local time (from a defined IANA timezone)
+ * to its corresponding UTC time, formatted in ATIS standard (HHMMZ or HH:MM Z).
+ *
+ * This function uses the Intl API to reliably handle timezone conversions.
+ *
+ * @param {string} dateString The date/time string (e.g., "2024-11-20 15:30:00").
+ * @param {string} timeZoneIANA The IANA timezone code (e.g., "Europe/Madrid").
+ * @returns {string} The time formatted as "HH:MM Z" (Zulu time), or "Invalid Date".
+ */
 function getATISTimeFromLocalTime(dateString, timeZoneIANA) {
-    // 1. Parse the input string into a list of components (Year, Month, Day, Hour, Minute, Second)
-    // Assumes input format is "YYYY-MM-DD HH:MM:SS"
-    // Splitting by [\s:-] handles spaces, hyphens, and colons.
-    const parts = dateString.split(/[\s:-]/).map(Number);
+    // 1. Create a Timezone-Aware UTC Date
+    // The key is to append ' Z' to the input string. This tells the Date constructor 
+    // to interpret the dateString as UTC time, which can then be offset by the IANA Zone.
+    // However, the cleanest way for this specific problem is to use Intl to calculate the UTC equivalent.
 
-    if (parts.length < 6 || parts.some(isNaN)) {
-        console.error("Input string parsing failed.");
+    try {
+        // We create a date string that represents a moment in time (e.g., "2024-11-20 15:30:00")
+        // and tell the constructor *where* that moment occurred by using the IANA zone.
+        // We use 'new Date(string)' only with the IANA zone specified.
+
+        // This relies on the specific behavior where combining the date string with 
+        // the zone offset (or the zone name itself) correctly initializes the internal UTC timestamp.
+
+        // A more reliable way: Use Intl to format the date string *as if it were in UTC*
+        // but with the local components, forcing the creation of the correct UTC timestamp.
+
+        const safeIsoString = dateString.replace(' ', 'T'); // "YYYY-MM-DDTHH:MM:SS"
+
+        // 🌟 BEST PRACTICE: Use a timezone-aware Date constructor format
+        const dateInZone = new Date(`${safeIsoString}Z`);
+
+        if (isNaN(dateInZone.getTime())) {
+            throw new Error("Date parsing failed.");
+        }
+
+        // We use the Intl API to get the target time zone's offset from the created UTC date.
+        // This is the core difference: we are not relying on new Date(string) for the conversion,
+        // but for formatting and extracting the final UTC time.
+
+        // This part is the most reliable way to get the UTC time corresponding to the local time
+        // provided in dateString *in the specified timeZoneIANA*.
+        const utcDate = new Date(dateInZone.toLocaleString('en-US', {
+            timeZone: timeZoneIANA,
+            year: 'numeric', month: 'numeric', day: 'numeric',
+            hour: 'numeric', minute: 'numeric', second: 'numeric',
+            hour12: false // Ensure 24-hour format
+        }));
+
+        // If the above is too complex, the simplest reliable fix is often to explicitly specify 
+        // the target zone during construction, but since that failed for you, we proceed with Intl:
+
+        // The previous two-step logic was attempting to solve a difficult problem.
+        // A cleaner approach is to use the formatter to extract the required components directly in UTC:
+
+        const formatter = new Intl.DateTimeFormat('en-US', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hourCycle: 'h23', // Ensure 24-hour format
+            timeZone: 'UTC',
+        });
+
+        // We need a way to create a Date object that internally holds the correct UTC moment
+        // corresponding to the local time provided.
+
+        const options = {
+            year: 'numeric', month: 'numeric', day: 'numeric',
+            hour: 'numeric', minute: 'numeric', second: 'numeric',
+            hourCycle: 'h23', timeZone: timeZoneIANA
+        };
+
+        const dateAsLocal = new Date(dateString.replace(/-/g, '/')); // Use slashes for better compatibility
+
+        const partsFormatter = new Intl.DateTimeFormat('en-US', {
+            year: 'numeric', month: 'numeric', day: 'numeric',
+            hour: 'numeric', minute: 'numeric', second: 'numeric',
+            hourCycle: 'h23', timeZone: timeZoneIANA
+        });
+
+        const partsString = partsFormatter.format(dateAsLocal);
+        const correctedDate = new Date(partsString);
+
+        if (isNaN(correctedDate.getTime())) {
+            throw new Error("Final date correction failed.");
+        }
+
+        // 3. Extract final UTC components and format to ATIS standard (HH:MM Z).
+        const finalHours = correctedDate.getUTCHours();
+        const finalMinutes = correctedDate.getUTCMinutes();
+
+        const formattedHours = String(finalHours).padStart(2, '0');
+        const formattedMinutes = String(finalMinutes).padStart(2, '0');
+
+        return `${formattedHours}:${formattedMinutes}Z`;
+
+    } catch (error) {
+        console.error("Time conversion failed:", error.message);
         return "Invalid Date";
     }
-
-    // Month is 0-indexed in Date constructor (0=Jan, 11=Dec)
-    // Create a NAIVE date object using the components. This date is interpreted
-    // using the local system's time zone, but we use it as a reference point.
-    const naiveDate = new Date(parts[0], parts[1] - 1, parts[2], parts[3], parts[4], parts[5]);
-
-    if (isNaN(naiveDate.getTime())) {
-        console.error("Naive date initialization failed.");
-        return "Invalid Date";
-    }
-
-    // 2. Correctly interpret the Naive Date's timestamp as being in the Target IANA Zone.
-    // date.toLocaleString('en-US', { timeZone: IANA }) returns a string representing the
-    // local time (in the IANA zone) of the * internal UTC moment* held by 'naiveDate'.
-    // We then pass this string back to the Date constructor. This two-step conversion
-    // forces the Date object to hold the correct internal UTC timestamp corresponding to
-    // the input date/time in the specified IANA zone, correctly handling DST offsets.
-    const dateInTargetZoneString = naiveDate.toLocaleString('en-US', { timeZone: timeZoneIANA });
-
-    const finalDateUtc = new Date(dateInTargetZoneString);
-
-    // If parsing fails, the time is invalid.
-    if (isNaN(finalDateUtc.getTime())) {
-        console.error("Time zone correction failed, resulting in NaN.");
-        return "Invalid Date";
-    }
-
-    // 3. Extract final UTC components and format to ATIS standard (HH:MM Z).
-    const finalHours = finalDateUtc.getUTCHours();
-    const finalMinutes = finalDateUtc.getUTCMinutes();
-
-    const formattedHours = String(finalHours).padStart(2, '0');
-    const formattedMinutes = String(finalMinutes).padStart(2, '0');
-
-    return `${formattedHours}:${formattedMinutes}Z`;
 }

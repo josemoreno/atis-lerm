@@ -261,7 +261,31 @@ function getSkyState(aemetData, reportData) {
         const mappedData = mapAemetToOctasAndPhenomenon(closestPrediction.skyDescription);
         reportData.originalSkyDescription = closestPrediction.skyDescription;
         reportData.sky = mappedData.sky;
-        reportData.phenomenon = mappedData.phenomenon;
+        reportData.phenomenon_original = mappedData.phenomenon;
+        // --- 3. Sky/Cloud Formatting ---
+        // Cloud Layer Description (using Octas)
+        if (mappedData.sky === 0) {
+            reportData.clouds = "SKY CLEAR";
+            reportData.clouds_short = "SKC";
+        } else if (mappedData.sky <= 2) {
+            reportData.clouds = "FEW"; // 1-2 Octas
+            reportData.clouds_short = "FEW";
+        } else if (mappedData.sky <= 4) {
+            reportData.clouds = "SCATTERED"; // 3-4 Octas
+            reportData.clouds_short = "SCT";
+        } else if (mappedData.sky <= 7) {
+            reportData.clouds = "BROKEN"; // 5-7 Octas
+            reportData.clouds_short = "BKN";
+        } else { // 8 Octas
+            reportData.clouds = "OVERCAST";
+            reportData.clouds_short = "OVC";
+        }
+
+        // Significant Weather/Phenomenon (e.g., Rain, Fog, Thunderstorm)
+        if (mappedData.phenomenon && mappedData.phenomenon !== 'Clear' && mappedData.phenomenon !== 'Unknown') {
+            reportData.phenomenon = `${phenomenon.toUpperCase()}`;
+        }
+
     }
 }
 
@@ -373,7 +397,6 @@ export async function getFormattedAtisData(apiKey) {
     // 1. Fetch Municipal Prediction
     const predictionUrl = `${AEMET_API}${ENDPOINT_PRED_MUN}${COD_ROBLE}`;
     const predictionData = await fetchAemetJson(predictionUrl, headers);
-
     // 2. Fetch Observation Data
     const observationUrlVado = `${AEMET_API}${ENDPOINT_DATA_IDEMA}${ID_EMA_PANTANO_VADO}`;
     const observationDataVado = await fetchAemetJson(observationUrlVado, headers);

@@ -152,7 +152,7 @@ function parseWindyForecast(windyData) {
         const hours = timePart.substring(0, 2);
         const minutes = timePart.substring(3, 5);
 
-        return `${hours}${minutes}`;
+        return `${hours}${minutes}Z`;
     }
 
     // --- Perform Conversions and Mapping ---
