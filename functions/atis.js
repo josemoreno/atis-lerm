@@ -160,7 +160,7 @@ class ATISReport {
 
         report_parts.push(`${this.acknowledgment}.`);
 
-        return report_parts.join(" ");
+        return report_parts.join("");
     }
 
     get_datis_report() {
