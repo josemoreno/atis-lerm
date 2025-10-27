@@ -1,6 +1,8 @@
 // Import the ATIS data fetching function from the local module
 import { getFormattedAtisData } from './aemet.js';
 import { fetchAndParseLERMConditions } from './robleEMA.js'
+import { fetchWindyData } from './windy.js';
+import { WeatherReportData } from './weatherReport.js';
 
 // --- ATIS IDENTIFIER LOGIC ---
 const ATIS_IDENTIFIERS = [
@@ -50,26 +52,26 @@ function formatReportForATIS(reportData) {
     let clouds = '';
     let clouds_short = '';
     let weather_phen = '';
-    const skyOctas = reportData.sky;
+    // const skyOctas = reportData.sky;
     const phenomenon = reportData.phenomenon;
 
-    // Cloud Layer Description (using Octas)
-    if (skyOctas === 0) {
-        clouds += "SKY CLEAR";
-        clouds_short += "SKC";
-    } else if (skyOctas <= 2) {
-        clouds += "FEW"; // 1-2 Octas
-        clouds_short += "FEW";
-    } else if (skyOctas <= 4) {
-        clouds += "SCATTERED"; // 3-4 Octas
-        clouds_short += "SCT";
-    } else if (skyOctas <= 7) {
-        clouds += "BROKEN"; // 5-7 Octas
-        clouds_short += "BKN";
-    } else { // 8 Octas
-        clouds += "OVERCAST";
-        clouds_short += "OVC";
-    }
+    // // Cloud Layer Description (using Octas)
+    // if (skyOctas === 0) {
+    //     clouds += "SKY CLEAR";
+    //     clouds_short += "SKC";
+    // } else if (skyOctas <= 2) {
+    //     clouds += "FEW"; // 1-2 Octas
+    //     clouds_short += "FEW";
+    // } else if (skyOctas <= 4) {
+    //     clouds += "SCATTERED"; // 3-4 Octas
+    //     clouds_short += "SCT";
+    // } else if (skyOctas <= 7) {
+    //     clouds += "BROKEN"; // 5-7 Octas
+    //     clouds_short += "BKN";
+    // } else { // 8 Octas
+    //     clouds += "OVERCAST";
+    //     clouds_short += "OVC";
+    // }
 
     // Significant Weather/Phenomenon (e.g., Rain, Fog, Thunderstorm)
     if (phenomenon && phenomenon !== 'Clear' && phenomenon !== 'Unknown') {
@@ -95,8 +97,8 @@ function formatReportForATIS(reportData) {
         gust_dir_f: String(reportData.gust_direction).padStart(3, '0'),
         gust_speed: Math.round(reportData.gust_speed),
         visibility: reportData.visibility, // Assuming visibility is numeric
-        clouds: clouds,
-        clouds_short: clouds_short,
+        clouds: reportData.clouds.join(", "),
+        clouds_short: reportData.clouds_short.join("\t\n"),
         phen: weather_phen,
         temperature: `${Math.round(reportData.temperature)}`,
         dew_point: `${Math.round(reportData.dew_point)}`,
@@ -208,17 +210,27 @@ export async function onRequest(context) {
 
     // 1. Securely retrieve the API Key from environment variables
     // Re-enabling environment variable usage (recommended for production)
-    const API_KEY = context.env.AEMET_API_KEY;
-    if (!API_KEY) {
+    const AEMET_API_KEY = context.env.AEMET_API_KEY;
+    if (!AEMET_API_KEY) {
         return new Response("Configuration Error: AEMET_API_KEY secret is missing.", { status: 500 });
     }
 
+    const WINDY_API_KEY = context.env.WINDY_API_KEY;
+    if (!WINDY_API_KEY) {
+        return new Response("Configuration Error: WINDY_API_KEY secret is missing.", { status: 500 });
+    }
+
     try {
+        const weatherReport = new WeatherReportData()
         // 2. Fetch and process the weather data (all steps remain the same)
-        const aemetData = await getFormattedAtisData(API_KEY);
+        const windyData = await fetchWindyData(WINDY_API_KEY)
+        weatherReport.mergeData(windyData);
+        const aemetData = await getFormattedAtisData(AEMET_API_KEY);
+        weatherReport.mergeData(aemetData);
         const LERMData = await fetchAndParseLERMConditions();
-        const rawData = mergeEMAs(aemetData, LERMData);
-        const atisData = formatReportForATIS(rawData);
+        weatherReport.wind_vrb = getVRBWind(weatherReport.wind_direction, LERMData.wind_direction);
+        weatherReport.mergeData(LERMData);
+        const atisData = formatReportForATIS(weatherReport);
 
         // 3. Generate the ATIS report object
         const report = new ATISReport(atisData);
@@ -232,7 +244,8 @@ export async function onRequest(context) {
             fullReport: fullReport,
             datisReport: datisReport,
             rawAemet: aemetData,
-            rawLerm: LERMData
+            rawLerm: LERMData,
+            rawWindy: windyData
         };
 
         return new Response(JSON.stringify(combinedReports), {

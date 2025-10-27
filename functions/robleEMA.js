@@ -61,14 +61,14 @@ function parseCleanConditions(rawText) {
         const time = timeMatch[2];
         // Note: Time is in CET. Using a standard format.
         results.observationTime_raw = `${year}-${month}-${day}T${time}`;
-        results.observationTime_atis = convertToAtisTime(results.observationTime_raw)
+        results.observationTime = convertToAtisTime(results.observationTime_raw)
     } else {
         results.observationTime_raw = null;
     }
 
     // 2. Temperature
     const tempMatch = rawText.match(tempRegex);
-    results.temperature_c = tempMatch ? parseFloat(tempMatch[1]) : null;
+    results.temperature = tempMatch ? parseFloat(tempMatch[1]) : null;
 
     // 3. Wind (Key change: using the Spanish direction parser)
     const windMatch = rawText.match(windRegex);
@@ -76,20 +76,20 @@ function parseCleanConditions(rawText) {
         const speed_kmh = parseFloat(windMatch[1]);
         const direction_text = windMatch[2].toUpperCase();
 
-        results.wind_speed_knots = convertKmhToKnots(speed_kmh);
+        results.wind_speed = convertKmhToKnots(speed_kmh);
         results.wind_direction_text = direction_text;
 
         // *** CALLING THE SPANISH DIRECTION FUNCTION ***
-        results.wind_direction_degrees = directionToDegrees(direction_text);
+        results.wind_direction = directionToDegrees(direction_text);
     } else {
         // Default to calm/variable
-        results.wind_speed_knots = null;
-        results.wind_direction_degrees = null;
+        results.wind_speed = null;
+        results.wind_direction = null;
     }
 
     // 4. QNH
     const qnhMatch = rawText.match(qnhRegex);
-    results.qnh_hpa = qnhMatch ? parseInt(qnhMatch[1]) : null;
+    results.qnh = qnhMatch ? parseInt(qnhMatch[1]) : null;
 
     // 5. Sunrise and Sunset
     const sunMatch = rawText.match(sunTimesRegex);

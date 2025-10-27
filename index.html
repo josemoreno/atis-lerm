@@ -80,6 +80,10 @@
                 <h3>LERM Data Source</h3>
                 <pre id="raw-lerm">Loading...</pre>
             </div>
+            <div class="raw-data-box">
+                <h3>Windy Data Source</h3>
+                <pre id="raw-windy">Loading...</pre>
+            </div>
         </div>
     </div>
 
@@ -160,6 +164,7 @@
                 document.getElementById('datis-report').textContent = reports.datisReport || 'N/A';
                 document.getElementById('raw-aemet').textContent = JSON.stringify(reports.rawAemet, null, 2) || 'N/A';
                 document.getElementById('raw-lerm').textContent = JSON.stringify(reports.rawLerm, null, 2) || 'N/A';
+                document.getElementById('raw-windy').textContent = JSON.stringify(reports.rawWindy, null, 2) || 'N/A';
 
                 // 🌟 STEP 2: Synthesize the formatted text 🌟
                 speakText(spokenText, 'en-US', 0.9); // Use en-US for better pronunciation of aviation terms like QNH
