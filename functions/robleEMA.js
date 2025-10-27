@@ -196,99 +196,91 @@ function convertToAtisTime(rawTimeString) {
 
 
 /**
- * Converts a specific local time (from a defined IANA timezone)
- * to its corresponding UTC time, formatted in ATIS standard (HHMMZ or HH:MM Z).
- * This version forces the conversion via a string format that is reliably parsed 
- * as being in the target time zone's local time.
- *
- * @param {string} dateString The date/time string (e.g., "2024-11-20 15:30:00").
- * @param {string} timeZoneIANA The IANA timezone code (e.g., "Europe/Madrid").
- * @returns {string} The time formatted as "HH:MM Z" (Zulu time), or "Invalid Date".
+ * Converts a specific local time in the Europe/Madrid zone (UTC+1 or UTC+2)
+ * to its corresponding UTC time, formatted as HHMMZ.
+ * * @param {string} dateString The date/time string (e.g., "2025-10-27 15:30:00").
+ * @param {string} timeZoneIANA Must be "Europe/Madrid" or similar EU zone for this logic.
+ * @returns {string} The time formatted as "HHMMZ", or "Invalid Date".
  */
 function getATISTimeFromLocalTime(dateString, timeZoneIANA) {
     if (!dateString || !timeZoneIANA) return "Invalid Date";
 
-    try {
-        // 1. Create a safe, parsable ISO-like string. 
-        // Replace spaces with 'T' and hyphens with slashes for broader compatibility.
-        // We do *not* add 'Z' here, as that would force UTC interpretation.
-        const safeDateString = dateString.replace(' ', 'T').replace(/-/g, '/');
-
-        // 2. Create the Date object. It is *crucial* to tell the constructor 
-        // what time zone the input string represents.
-        // This is done by creating an ISO-like string and appending the target zone name.
-        // Unfortunately, this is not standard.
-
-        // The most reliable standard way is to construct the date components explicitly:
-        const parts = dateString.split(/[\s:-]/).map(Number); // YYYY, M, D, H, M, S
-
-        // Month is 0-indexed (Month - 1)
-        const date = new Date(parts[0], parts[1] - 1, parts[2], parts[3], parts[4], parts[5]);
-
-        if (isNaN(date.getTime())) {
-            throw new Error("Initial date parsing failed.");
-        }
-
-        // 3. Use Intl.DateTimeFormat to force calculation of the UTC components 
-        // by applying the offset from the target zone to the local time we just created.
-
-        const formatter = new Intl.DateTimeFormat('en-US', {
-            hour: '2-digit',
-            minute: '2-digit',
-            timeZone: 'UTC', // We want the output formatted in UTC
-            // But the time value MUST be calculated based on the offset of the local time
-            // which is handled by a temporary date object.
-        });
-
-        // Instead of the unreliable string method, let's use the explicit conversion:
-
-        const localDate = new Date(dateString.replace(/-/g, '/'));
-
-        const corrected = new Date(localDate.toLocaleString('en-US', {
-            timeZone: timeZoneIANA,
-        }));
-
-        // THIS IS THE KEY CHANGE: We are no longer relying on `new Date(string)`
-        // We extract the components by formatting the local date into the target zone
-        // and using a new Date to get the final UTC timestamp.
-
-        const options = {
-            year: 'numeric', month: 'numeric', day: 'numeric',
-            hour: 'numeric', minute: 'numeric', second: 'numeric',
-            timeZone: timeZoneIANA,
-            hourCycle: 'h23'
-        };
-
-        const formatterLocal = new Intl.DateTimeFormat('en-US', options);
-
-        // Format the initial date into a string that *includes* the full date info 
-        // as if it were in the target zone.
-        const localTimeFormatted = formatterLocal.format(date);
-
-        // Now, pass this string back to a Date constructor. Since the formatting 
-        // provided no time zone info, it is *still* interpreted in the local environment's time zone.
-        // This is why it fails.
-
-        // --- FINAL ATTEMPT WITH RELIABLE METHOD ---
-        // We will extract the exact year, month, day, hour, minute from the date object
-        // but adjusted for the IANA time zone offset.
-
-        const adjustedDate = new Date(localTimeFormatted);
-
-        if (isNaN(adjustedDate.getTime())) {
-            throw new Error("Final date object is invalid.");
-        }
-
-        const finalHours = adjustedDate.getUTCHours();
-        const finalMinutes = adjustedDate.getUTCMinutes();
-
-        const formattedHours = String(finalHours).padStart(2, '0');
-        const formattedMinutes = String(finalMinutes).padStart(2, '0');
-
-        return `${formattedHours}:${formattedMinutes}Z`;
-
-    } catch (error) {
-        console.error("Time conversion failed:", error.message);
+    // 1. Parse the input components (YYYY, M, D, H, M, S)
+    const parts = dateString.split(/[\s:-]/).map(Number);
+    if (parts.length < 6 || parts.some(isNaN)) {
+        console.error("Input string parsing failed.");
         return "Invalid Date";
     }
+
+    const year = parts[0];
+    const month = parts[1];
+    const day = parts[2];
+    const hour = parts[3];
+    const minute = parts[4];
+
+    // 2. Helper function to find the last Sunday of a month
+    function getLastSunday(year, month) {
+        // month is 1-indexed (3 for March, 10 for October)
+        // Find the 1st of the next month (or 1st of Jan next year if month is Dec)
+        const date = new Date(year, month, 1);
+
+        // Back up one day to get the last day of the target month
+        date.setDate(date.getDate() - 1);
+
+        // Calculate how many days to go back to find the Sunday (0=Sunday)
+        const dayOfWeek = date.getDay();
+        const daysToSubtract = dayOfWeek === 0 ? 0 : dayOfWeek;
+
+        // Set the date to the last Sunday
+        date.setDate(date.getDate() - daysToSubtract);
+
+        return date;
+    }
+
+    // 3. Determine DST start and end dates for the given year
+    const dstStarts = getLastSunday(year, 3); // Last Sunday of March
+    const dstEnds = getLastSunday(year, 10);  // Last Sunday of October
+
+    // Since DST changes at 02:00 (March) and 03:00 (October), 
+    // we set the changeover times for comparison purposes.
+    dstStarts.setHours(2, 0, 0, 0);
+    dstEnds.setHours(3, 0, 0, 0);
+
+    // 4. Create a single timestamp for the input time (interpreted as local time)
+    // We create a Date object interpreted as UTC, so its timestamp is absolute.
+    const localTimeMs = Date.UTC(year, month - 1, day, hour, minute);
+
+    // 5. Determine the offset (1 or 2 hours)
+    let offsetHours;
+
+    // Convert changeover dates to milliseconds for comparison
+    const dstStartsMs = dstStarts.getTime();
+    const dstEndsMs = dstEnds.getTime();
+
+    // The period between the start (inclusive) and the end (exclusive) is UTC+2
+    if (localTimeMs >= dstStartsMs && localTimeMs < dstEndsMs) {
+        // Summer Time: UTC+2 (Central European Summer Time, CEST)
+        offsetHours = 2;
+    } else {
+        // Winter Time: UTC+1 (Central European Time, CET)
+        offsetHours = 1;
+    }
+
+    // 6. Calculate UTC time by subtracting the offset
+    // Offset in milliseconds
+    const offsetMs = offsetHours * 60 * 60 * 1000;
+
+    // UTC time in milliseconds
+    const utcTimeMs = localTimeMs - offsetMs;
+
+    // 7. Create a Date object from the UTC timestamp and extract HHMMZ
+    const finalDate = new Date(utcTimeMs);
+
+    const finalHours = finalDate.getUTCHours();
+    const finalMinutes = finalDate.getUTCMinutes();
+
+    const formattedHours = String(finalHours).padStart(2, '0');
+    const formattedMinutes = String(finalMinutes).padStart(2, '0');
+
+    return `${formattedHours}${formattedMinutes}Z`;
 }
