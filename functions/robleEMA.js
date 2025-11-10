@@ -173,6 +173,7 @@ async function getRobledilloObservation(KV) {
 }
 
 async function updateRobledilloObservation(KV, data) {
+    console.log("Pushing to KV")
     KV.put("robledilloEMA", data);
 }
 
