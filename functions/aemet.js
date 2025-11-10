@@ -407,9 +407,9 @@ export async function getFormattedAtisData(apiKey, KVStore) {
         now.getUTCDate().toString().padStart(2, '0') + '-' +
         currentHourUTC; // This is the unique identifier for the current hour
     // 1. Check Cache
+    console.log("Getting keys from cache")
     const lastUpdateKey = await KVStore.get("lastUpdateKey"); // Store the full composite key here
-    console.log("Hello")
-
+    console.log(lastUpdateKey)
     if (lastUpdateKey === currentCacheKey) {
         console.log(`Cache HIT for key ${currentCacheKey}. Using stored data.`);
 
