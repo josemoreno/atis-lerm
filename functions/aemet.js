@@ -71,16 +71,16 @@ function processAemetData(predictionData, observationDataVado, observationDataGu
     if (observationDataGuada != null) {
         let observation = getLatestObservationData(observationDataGuada, reportData)
         // Update observation in KV Store
-        KVStore.put("dataGuada", observation)
+        KVStore.put("dataGuada", JSON.stringify(observation))
     }
     // EMA VADO to overwritte the information to a more similar location
     if (observationDataVado != null) {
         let observation = getLatestObservationData(observationDataVado, reportData)
-        KVStore.put("dataVado", observation)
+        KVStore.put("dataVado", JSON.stringify(observation))
     }
     if (predictionData != null) {
         let prediction = getSkyState(predictionData, reportData)
-        KVStore.put("prediction", prediction)
+        KVStore.put("prediction", JSON.stringify(prediction))
     }
 
     return reportData
