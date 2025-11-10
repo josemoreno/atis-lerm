@@ -59,85 +59,31 @@ async function fetchAemetJson(initialUrl, headers) {
  */
 function processAemetData(predictionData, observationDataVado, observationDataGuada, KVStore) {
     let reportData = {}
-    let latestData = updateAndGetLatestData(KVStore, { 'prediction': predictionData, 'dataVado': observationDataVado, 'dataGuada': observationDataGuada })
+    if (predictionData == null && observationDataVado == null && observationDataGuada == null) {
+        reportData = { ...returnNullObject() }
+        return reportData
+    }
     // Example: Getting current time (a quick way to get ZULU time)
     const now = new Date();
     reportData.time = now.getUTCHours().toString().padStart(2, '0') +
         now.getUTCMinutes().toString().padStart(2, '0');
     // EMA GUADA has much more information
-    getLatestObservationData(latestData["dataGuada"], reportData)
+    if (observationDataGuada != null) {
+        let observation = getLatestObservationData(observationDataGuada, reportData)
+        // Update observation in KV Store
+        KVStore.put("dataGuada", observation)
+    }
     // EMA VADO to overwritte the information to a more similar location
-    getLatestObservationData(latestData["dataVado"], reportData)
-    getSkyState(latestData["prediction"], reportData)
+    if (observationDataVado != null) {
+        let observation = getLatestObservationData(observationDataVado, reportData)
+        KVStore.put("dataVado", observation)
+    }
+    if (predictionData != null) {
+        let prediction = getSkyState(predictionData, reportData)
+        KVStore.put("prediction", prediction)
+    }
 
     return reportData
-}
-
-/**
- * Compares new data against current KV store values for three specific keys.
- * If the new data is newer (based on the 'fint' ISO string field), the KV store is updated.
- * Otherwise, the existing KV data is returned.
- *
- * @param {object} KV - The Cloudflare KV Namespace binding (e.g., `env.MY_KV`).
- * @param {object | null} newReading - The new data reading, expected to contain 'prediction', 'dataVado', and 'dataGuada' keys.
- * @returns {Promise<object>} An object containing the final, latest data for the three keys.
- */
-async function updateAndGetLatestData(KV, newReading) {
-    // 1. Define the keys we are working with
-    const keys = ['prediction', 'dataVado', 'dataGuada'];
-    const latestData = {};
-
-    // 2. Helper function to process a single key
-    const processKey = async (keyName) => {
-        const kvKey = `data:${keyName}`;
-
-        // Fetch existing data from KV (returns null if not found)
-        const currentKvString = await KV.get(kvKey);
-        let currentKvData = null;
-
-        try {
-            if (currentKvString) {
-                currentKvData = JSON.parse(currentKvString);
-            }
-        } catch (error) {
-            console.error(`Error parsing existing KV data for ${keyName}: ${error.message}`);
-            // If parsing fails, treat existing data as unusable/old
-            currentKvData = null;
-        }
-
-        // --- Core Logic based on User Requirements ---
-
-        // If the new reading is null, return the existing KV data (Requirement met)
-        if (newReading === null || typeof newReading !== 'object' || !newReading[keyName]) {
-            return currentKvData;
-        }
-
-        const newReadingData = newReading[keyName];
-
-        const newTimestamp = new Date(newReadingData.fint).getTime();
-
-        // If currentKvData is null, assume its timestamp is 0 (oldest possible)
-        const currentTimestamp = currentKvData ? new Date(currentKvData.fint).getTime() : 0;
-
-        if (newTimestamp > currentTimestamp) {
-            // New reading is newer, so update KV (Requirement met)
-            const newReadingString = JSON.stringify(newReadingData);
-            await KV.put(kvKey, newReadingString);
-            console.log(`Updated KV for ${keyName}. New timestamp: ${new Date(newTimestamp).toISOString()}`);
-            return newReadingData; // Return the new, updated data
-        } else {
-            // KV data is newer or equal, return KV data (Requirement met)
-            console.log(`KV data for ${keyName} is up-to-date or newer. Current timestamp: ${new Date(currentTimestamp).toISOString()}`);
-            return currentKvData; // Return the existing KV data
-        }
-    };
-
-    // 3. Process all keys in parallel
-    await Promise.all(keys.map(async (key) => {
-        latestData[key] = await processKey(key);
-    }));
-
-    return latestData;
 }
 
 function returnNullObject() {
@@ -179,6 +125,8 @@ function getLatestObservationData(observationData, reportData) {
     }
     reportData.prec = latestObservation.prec
     reportData.observationTime = convertToAtisTime(latestObservation.fint)
+
+    return latestObservation
 }
 
 /**
@@ -343,8 +291,8 @@ function getSkyState(aemetData, reportData) {
         if (mappedData.phenomenon && mappedData.phenomenon !== 'Clear' && mappedData.phenomenon !== 'Unknown') {
             reportData.phenomenon = `${phenomenon.toUpperCase()}`;
         }
-
     }
+    return closestPrediction
 }
 
 
@@ -442,25 +390,161 @@ function findClosestObservation(observationData) {
 }
 
 /**
- * Main function to fetch, process, and return ATIS-ready data.
+ * Main function to fetch, process, and return ATIS-ready data,
+ * with hourly caching implemented using KVStore.
  * @param {string} apiKey The secret AEMET API key.
+ * @param {object} KVStore The key-value store interface (e.g., Workers KV).
  * @returns {Promise<object>} The processed data object suitable for ATISReport.
  */
 export async function getFormattedAtisData(apiKey, KVStore) {
+    const now = new Date();
+    // Get the current hour in UTC (Zulu) - the target update interval
+    const currentHourUTC = now.getUTCHours().toString().padStart(2, '0');
+
+    // Create the composite key: YYYY-MM-DD-HH (e.g., "2025-11-11-19")
+    const currentCacheKey = now.getUTCFullYear().toString() + '-' +
+        (now.getUTCMonth() + 1).toString().padStart(2, '0') + '-' +
+        now.getUTCDate().toString().padStart(2, '0') + '-' +
+        currentHourUTC; // This is the unique identifier for the current hour
+    // 1. Check Cache
+    const lastUpdateKey = await KVStore.get("lastUpdateKey"); // Store the full composite key here
+    console.log("Hello")
+
+    if (lastUpdateKey === currentCacheKey) {
+        console.log(`Cache HIT for key ${currentCacheKey}. Using stored data.`);
+
+        // Retrieve the cached raw observation/prediction data from the store
+        const cachedObservationVado = await KVStore.get("dataVado", "json");
+        const cachedObservationGuada = await KVStore.get("dataGuada", "json");
+        const cachedPrediction = await KVStore.get("prediction", "json");
+
+        // The processAemetData function expects the *raw* AEMET data structure,
+        // but the KVStore.put calls in processAemetData store the *closest observation/prediction objects*.
+        // We will call processAemetData with the **raw AEMET structures** if available,
+        // or a null-filled object if the cache stores the *final* ATIS object (which it doesn't seem to based on your existing code).
+
+        // Since your `processAemetData` expects the full raw payload for `predictionData`
+        // but the closest *item* for the observation data (as stored in KVStore in your implementation),
+        // we must reconstruct the final ATIS object directly here using the cached items.
+        // This is a cleaner approach than trying to pass the subset back into the main processor.
+
+        if (cachedObservationGuada || cachedObservationVado || cachedPrediction) {
+            // Re-populate the reportData object using the cached specific items
+            let reportData = { time: now.getUTCHours().toString().padStart(2, '0') + now.getUTCMinutes().toString().padStart(2, '0') };
+
+            // We apply the Vado observation first (if available) and then Guada,
+            // or vice versa, depending on which one is intended to be the override.
+            // Based on your original code, Vado overwrites Guada.
+
+            // Note: We need to re-run the logic that processes the observation/prediction *objects*
+            // into the final `reportData` ATIS structure, which is what your `getLatestObservationData`
+            // and `getSkyState` functions do (since the KV store holds the *input* to those functions, not the final reportData).
+            // A more efficient approach for caching the *result* would be to store the final `reportData` itself.
+
+            // Since the original code stores intermediate data (closest observation/prediction objects), 
+            // we'll run the final processing steps again on the cached objects:
+
+            if (cachedObservationGuada) {
+                getLatestObservationDataFromCached(cachedObservationGuada, reportData);
+            }
+            if (cachedObservationVado) {
+                // This will overwrite fields like wind/temp/QNH from Guada with Vado data
+                getLatestObservationDataFromCached(cachedObservationVado, reportData);
+            }
+            if (cachedPrediction) {
+                getSkyStateFromCached(cachedPrediction, reportData);
+            }
+
+            console.log("ATIS data generated from cache.");
+            return reportData;
+        }
+
+        // If the hour matched but the data somehow wasn't in the store, treat it as a miss and re-fetch.
+        console.warn("Cache hour matched, but data keys were missing. Re-fetching.");
+    }
+
+    // 2. Cache Miss / Stale Cache: Fetch Data
+    console.log(`Cache MISS or Stale for hour ${currentHourUTC}Z. Fetching new data.`);
     const headers = {
         "Accept": "application/json",
         "api_key": apiKey
     };
 
-    // 1. Fetch Municipal Prediction
+    // Fetch Municipal Prediction
     const predictionUrl = `${AEMET_API}${ENDPOINT_PRED_MUN}${COD_ROBLE}`;
     const predictionData = await fetchAemetJson(predictionUrl, headers);
-    // 2. Fetch Observation Data
+
+    // Fetch Observation Data
     const observationUrlVado = `${AEMET_API}${ENDPOINT_DATA_IDEMA}${ID_EMA_PANTANO_VADO}`;
     const observationDataVado = await fetchAemetJson(observationUrlVado, headers);
     const observationUrlGuada = `${AEMET_API}${ENDPOINT_DATA_IDEMA}${ID_EMA_GUADA}`;
     const observationDataGuada = await fetchAemetJson(observationUrlGuada, headers);
 
-    // 3. Process and format the data
-    return processAemetData(predictionData, observationDataVado, observationDataGuada, KVStore);
+    // 3. Process and format the data (This also updates the KVStore implicitly via calls inside)
+    const reportData = processAemetData(predictionData, observationDataVado, observationDataGuada, KVStore);
+
+    // 4. Update Cache Control Tag
+    if (reportData.wind_speed !== null || reportData.sky !== null) {
+        // Only update the time tag if we successfully got *some* data
+        await KVStore.put("lastUpdateKey", currentCacheKey);
+        console.log(`Cache updated with new data and key ${currentCacheKey}.`);
+    }
+
+    return reportData;
+}
+
+
+// --- Helper functions for re-using cached data ---
+// These are copies of the original processing logic but operate on the already
+// identified 'closest observation' or 'closest prediction' object from the cache.
+
+function getLatestObservationDataFromCached(latestObservation, reportData) {
+    reportData.wind_direction = latestObservation.dv;
+    reportData.wind_speed = convertMpsToKnots(latestObservation.vv);
+    reportData.gust_direction = latestObservation.dmax;
+    reportData.gust_speed = convertMpsToKnots(latestObservation.vmax);
+    if (latestObservation.vis) {
+        reportData.visibility = latestObservation.vis;
+    }
+    reportData.temperature = latestObservation.ta;
+    if (latestObservation.tpr) {
+        reportData.dew_point = latestObservation.tpr;
+    }
+    if (latestObservation.pres_nmar) {
+        reportData.qnh = latestObservation.pres_nmar;
+    }
+    reportData.prec = latestObservation.prec;
+    reportData.observationTime = convertToAtisTime(latestObservation.fint);
+}
+
+function getSkyStateFromCached(closestPrediction, reportData) {
+    if (closestPrediction) {
+        const mappedData = mapAemetToOctasAndPhenomenon(closestPrediction.skyDescription);
+        reportData.originalSkyDescription = closestPrediction.skyDescription;
+        reportData.sky = mappedData.sky;
+        reportData.phenomenon_original = mappedData.phenomenon;
+
+        // --- Sky/Cloud Formatting ---
+        if (mappedData.sky === 0) {
+            reportData.clouds = "SKY CLEAR";
+            reportData.clouds_short = "SKC";
+        } else if (mappedData.sky <= 2) {
+            reportData.clouds = "FEW";
+            reportData.clouds_short = "FEW";
+        } else if (mappedData.sky <= 4) {
+            reportData.clouds = "SCATTERED";
+            reportData.clouds_short = "SCT";
+        } else if (mappedData.sky <= 7) {
+            reportData.clouds = "BROKEN";
+            reportData.clouds_short = "BKN";
+        } else {
+            reportData.clouds = "OVERCAST";
+            reportData.clouds_short = "OVC";
+        }
+
+        // Significant Weather/Phenomenon
+        if (mappedData.phenomenon && mappedData.phenomenon !== 'Clear' && mappedData.phenomenon !== 'Unknown') {
+            reportData.phenomenon = `${mappedData.phenomenon.toUpperCase()}`;
+        }
+    }
 }

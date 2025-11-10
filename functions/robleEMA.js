@@ -164,7 +164,7 @@ export async function fetchAndParseLERMConditions(KVStore) {
  * @returns {Promise<object | null>} The existing KV data object, or null if not found/corrupted.
  */
 async function getRobledilloObservation(KV) {
-    const currentKvString = await KV.get(robledilloEMA);
+    const currentKvString = await KV.get("robledilloEMA");
     try {
         return currentKvString ? JSON.parse(currentKvString) : null;
     } catch (error) {
@@ -173,7 +173,7 @@ async function getRobledilloObservation(KV) {
 }
 
 async function updateRobledilloObservation(KV, data) {
-    KV.put(robledilloEMA, data);
+    KV.put("robledilloEMA", data);
 }
 
 /**
