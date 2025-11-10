@@ -40,7 +40,7 @@ function directionToDegrees(direction) {
  * Parses the clean, fixed-format text output to retrieve weather parameters.
  * (This function is updated to use the Spanish directionToDegrees.)
  */
-function parseCleanConditions(rawText) {
+function parseCleanConditions(rawText, KVStore) {
     if (!rawText || typeof rawText !== 'string') {
         return { error: "Invalid input text." };
     }
@@ -100,7 +100,7 @@ function parseCleanConditions(rawText) {
         results.sunrise = null;
         results.sunset = null;
     }
-    updateRobledilloObservation(env.KV_ATIS, results)
+    updateRobledilloObservation(KVStore, results)
 
     return results;
 }
@@ -111,7 +111,7 @@ function parseCleanConditions(rawText) {
  *
  * @returns {Promise<Object>} A promise that resolves to the structured weather data.
  */
-export async function fetchAndParseLERMConditions() {
+export async function fetchAndParseLERMConditions(KVStore) {
     const URL = 'https://www.aeroclubdeguadalajara.es/meteo.php';
 
     try {
@@ -150,11 +150,11 @@ export async function fetchAndParseLERMConditions() {
             .trim();                       // Trim leading/trailing whitespace
 
         // 4. Parse the cleaned text data
-        return parseCleanConditions(dataBlock);
+        return parseCleanConditions(dataBlock, KVStore);
 
     } catch (error) {
         console.error("Error fetching or parsing weather data:", error.message);
-        return await getRobledilloObservation(env.KV_ATIS);
+        return await getRobledilloObservation(KVStore);
     }
 }
 

@@ -57,9 +57,9 @@ async function fetchAemetJson(initialUrl, headers) {
  * @param {object} observationData JSON data from the conventional observation endpoint.
  * @returns {object} Data structured for the ATISReport constructor.
  */
-function processAemetData(predictionData, observationDataVado, observationDataGuada) {
+function processAemetData(predictionData, observationDataVado, observationDataGuada, KVStore) {
     let reportData = {}
-    let latestData = updateAndGetLatestData(env.KV_ATIS, { 'prediction': predictionData, 'dataVado': observationDataVado, 'dataGuada': observationDataGuada })
+    let latestData = updateAndGetLatestData(KVStore, { 'prediction': predictionData, 'dataVado': observationDataVado, 'dataGuada': observationDataGuada })
     // Example: Getting current time (a quick way to get ZULU time)
     const now = new Date();
     reportData.time = now.getUTCHours().toString().padStart(2, '0') +
@@ -446,7 +446,7 @@ function findClosestObservation(observationData) {
  * @param {string} apiKey The secret AEMET API key.
  * @returns {Promise<object>} The processed data object suitable for ATISReport.
  */
-export async function getFormattedAtisData(apiKey) {
+export async function getFormattedAtisData(apiKey, KVStore) {
     const headers = {
         "Accept": "application/json",
         "api_key": apiKey
@@ -462,5 +462,5 @@ export async function getFormattedAtisData(apiKey) {
     const observationDataGuada = await fetchAemetJson(observationUrlGuada, headers);
 
     // 3. Process and format the data
-    return processAemetData(predictionData, observationDataVado, observationDataGuada);
+    return processAemetData(predictionData, observationDataVado, observationDataGuada, KVStore);
 }

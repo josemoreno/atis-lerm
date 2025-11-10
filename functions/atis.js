@@ -182,6 +182,7 @@ export async function onRequest(context) {
     // Note: The URL and format parsing are no longer necessary for the primary logic
     // const url = new URL(context.request.url);
     // const format = url.searchParams.get('format'); 
+    const KV_STORE = context.env.KV_ATIS;
 
     // 1. Securely retrieve the API Key from environment variables
     // Re-enabling environment variable usage (recommended for production)
@@ -203,9 +204,10 @@ export async function onRequest(context) {
         weatherReport.mergeData(windyData);
         const aemetData = await getFormattedAtisData(AEMET_API_KEY);
         console.log(aemetData)
+        const aemetData = await getFormattedAtisData(AEMET_API_KEY, KV_STORE);
         weatherReport.mergeData(aemetData);
         const LERMData = await fetchAndParseLERMConditions();
-        console.log(LERMData)
+        const LERMData = await fetchAndParseLERMConditions(KV_STORE);
         weatherReport.wind_vrb = getVRBWind(weatherReport.wind_direction, LERMData.wind_direction);
         weatherReport.mergeData(LERMData);
         const atisData = formatReportForATIS(weatherReport);
