@@ -200,13 +200,9 @@ export async function onRequest(context) {
         const weatherReport = new WeatherReportData()
         // 2. Fetch and process the weather data (all steps remain the same)
         const windyData = await fetchWindyData(WINDY_API_KEY)
-        console.log(windyData)
         weatherReport.mergeData(windyData);
-        const aemetData = await getFormattedAtisData(AEMET_API_KEY);
-        console.log(aemetData)
         const aemetData = await getFormattedAtisData(AEMET_API_KEY, KV_STORE);
         weatherReport.mergeData(aemetData);
-        const LERMData = await fetchAndParseLERMConditions();
         const LERMData = await fetchAndParseLERMConditions(KV_STORE);
         weatherReport.wind_vrb = getVRBWind(weatherReport.wind_direction, LERMData.wind_direction);
         weatherReport.mergeData(LERMData);
