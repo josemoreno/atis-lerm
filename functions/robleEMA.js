@@ -100,6 +100,7 @@ function parseCleanConditions(rawText) {
         results.sunrise = null;
         results.sunset = null;
     }
+    updateRobledilloObservation(env.KV_ATIS, results)
 
     return results;
 }
@@ -134,7 +135,7 @@ export async function fetchAndParseLERMConditions() {
         const contentMatch = htmlText.match(contentRegex);
 
         if (!contentMatch || contentMatch.length < 2) {
-            throw new Error("Could not find the 'Condiciones Actuales' data block in the HTML.");
+            return await getRobledilloObservation(env.KV_ATIS);
         }
 
         // The captured content contains the raw data with HTML tags
@@ -153,8 +154,26 @@ export async function fetchAndParseLERMConditions() {
 
     } catch (error) {
         console.error("Error fetching or parsing weather data:", error.message);
-        return { error: `Failed to retrieve external data: ${error.message}` };
+        return await getRobledilloObservation(env.KV_ATIS);
     }
+}
+
+/**
+ * Retrieves the existing 'robledillo_observation' from KV. Used as a fallback.
+ * @param {object} KV - The Cloudflare KV Namespace binding.
+ * @returns {Promise<object | null>} The existing KV data object, or null if not found/corrupted.
+ */
+async function getRobledilloObservation(KV) {
+    const currentKvString = await KV.get(robledilloEMA);
+    try {
+        return currentKvString ? JSON.parse(currentKvString) : null;
+    } catch (error) {
+        return null;
+    }
+}
+
+async function updateRobledilloObservation(KV, data) {
+    KV.put(robledilloEMA, data);
 }
 
 /**

@@ -59,27 +59,85 @@ async function fetchAemetJson(initialUrl, headers) {
  */
 function processAemetData(predictionData, observationDataVado, observationDataGuada) {
     let reportData = {}
-    if (predictionData == null && observationDataVado == null && observationDataGuada == null) {
-        reportData = { ...returnNullObject() }
-        return reportData
-    }
+    let latestData = updateAndGetLatestData(env.KV_ATIS, { 'prediction': predictionData, 'dataVado': observationDataVado, 'dataGuada': observationDataGuada })
     // Example: Getting current time (a quick way to get ZULU time)
     const now = new Date();
     reportData.time = now.getUTCHours().toString().padStart(2, '0') +
         now.getUTCMinutes().toString().padStart(2, '0');
     // EMA GUADA has much more information
-    if (observationDataGuada != null) {
-        getLatestObservationData(observationDataGuada, reportData)
-    }
+    getLatestObservationData(latestData["dataGuada"], reportData)
     // EMA VADO to overwritte the information to a more similar location
-    if (observationDataVado != null) {
-        getLatestObservationData(observationDataVado, reportData)
-    }
-    if (predictionData != null) {
-        getSkyState(predictionData, reportData)
-    }
+    getLatestObservationData(latestData["dataVado"], reportData)
+    getSkyState(latestData["prediction"], reportData)
 
     return reportData
+}
+
+/**
+ * Compares new data against current KV store values for three specific keys.
+ * If the new data is newer (based on the 'fint' ISO string field), the KV store is updated.
+ * Otherwise, the existing KV data is returned.
+ *
+ * @param {object} KV - The Cloudflare KV Namespace binding (e.g., `env.MY_KV`).
+ * @param {object | null} newReading - The new data reading, expected to contain 'prediction', 'dataVado', and 'dataGuada' keys.
+ * @returns {Promise<object>} An object containing the final, latest data for the three keys.
+ */
+async function updateAndGetLatestData(KV, newReading) {
+    // 1. Define the keys we are working with
+    const keys = ['prediction', 'dataVado', 'dataGuada'];
+    const latestData = {};
+
+    // 2. Helper function to process a single key
+    const processKey = async (keyName) => {
+        const kvKey = `data:${keyName}`;
+
+        // Fetch existing data from KV (returns null if not found)
+        const currentKvString = await KV.get(kvKey);
+        let currentKvData = null;
+
+        try {
+            if (currentKvString) {
+                currentKvData = JSON.parse(currentKvString);
+            }
+        } catch (error) {
+            console.error(`Error parsing existing KV data for ${keyName}: ${error.message}`);
+            // If parsing fails, treat existing data as unusable/old
+            currentKvData = null;
+        }
+
+        // --- Core Logic based on User Requirements ---
+
+        // If the new reading is null, return the existing KV data (Requirement met)
+        if (newReading === null || typeof newReading !== 'object' || !newReading[keyName]) {
+            return currentKvData;
+        }
+
+        const newReadingData = newReading[keyName];
+
+        const newTimestamp = new Date(newReadingData.fint).getTime();
+
+        // If currentKvData is null, assume its timestamp is 0 (oldest possible)
+        const currentTimestamp = currentKvData ? new Date(currentKvData.fint).getTime() : 0;
+
+        if (newTimestamp > currentTimestamp) {
+            // New reading is newer, so update KV (Requirement met)
+            const newReadingString = JSON.stringify(newReadingData);
+            await KV.put(kvKey, newReadingString);
+            console.log(`Updated KV for ${keyName}. New timestamp: ${new Date(newTimestamp).toISOString()}`);
+            return newReadingData; // Return the new, updated data
+        } else {
+            // KV data is newer or equal, return KV data (Requirement met)
+            console.log(`KV data for ${keyName} is up-to-date or newer. Current timestamp: ${new Date(currentTimestamp).toISOString()}`);
+            return currentKvData; // Return the existing KV data
+        }
+    };
+
+    // 3. Process all keys in parallel
+    await Promise.all(keys.map(async (key) => {
+        latestData[key] = await processKey(key);
+    }));
+
+    return latestData;
 }
 
 function returnNullObject() {
