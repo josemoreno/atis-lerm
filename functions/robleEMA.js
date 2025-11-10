@@ -100,7 +100,7 @@ function parseCleanConditions(rawText, KVStore) {
         results.sunrise = null;
         results.sunset = null;
     }
-    updateRobledilloObservation(KVStore, results)
+    updateRobledilloObservation(KVStore, JSON.stringify(results))
 
     return results;
 }
