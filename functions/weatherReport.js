@@ -62,12 +62,34 @@ export class WeatherReportData {
         for (const key in sourceObject) {
             // Check 1: Ensure the property exists on the class instance
             if (this.hasOwnProperty(key)) {
-                // Check 2: Only merge if the source value is NOT null
-                if (sourceObject[key] !== null) {
+                // Check 2: Only merge if the source value is NOT null or undefined
+                if (sourceObject[key] !== null && sourceObject[key] !== undefined) {
                     this[key] = sourceObject[key];
                 }
             }
         }
+    }
+
+    /**
+     * Creates a new instance of WeatherReportData, explicitly merging data from multiple 
+     * sources in order of priority. Sources provided earlier in the array 
+     * have higher priority.
+     * @param {Array<object>} sources - An array of data objects, ordered by highest priority first.
+     */
+    static fromPrioritizedSources(sources) {
+        const report = new WeatherReportData();
+        
+        // Reverse the sources so lowest priority is merged first.
+        // Higher priority merges will overwrite lower priority ones if they have non-null values.
+        const reversedSources = [...sources].reverse();
+        
+        for (const source of reversedSources) {
+            if (source) {
+                report.mergeData(source);
+            }
+        }
+        
+        return report;
     }
 
     /**

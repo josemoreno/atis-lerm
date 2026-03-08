@@ -3,6 +3,7 @@ import { getFormattedAtisData } from './aemet.js';
 import { fetchAndParseLERMConditions } from './robleEMA.js'
 import { fetchWindyData } from './windy.js';
 import { WeatherReportData } from './weatherReport.js';
+import { fetchMeteoclimaticData } from './meteoclimatic.js';
 
 // --- ATIS IDENTIFIER LOGIC ---
 const ATIS_IDENTIFIERS = [
@@ -155,7 +156,6 @@ class ATISReport {
         if (this.gust_speed > 0) {
             wind_gust = `${this.gust_dir_f}/${this.gust_speed}`
         }
-        console.log(this.wind_vrb)
         let datis_lines = [
             `LERM ATIS INFORMATION ${identifierUpper} ${this.time_zulu}`.replace(":", ""),
             `VFR APP RWY ${this.runways_in_use.toUpperCase()} TL 140`,
@@ -185,7 +185,6 @@ export async function onRequest(context) {
     const KV_STORE = context.env.KV_ATIS;
 
     // 1. Securely retrieve the API Key from environment variables
-    // Re-enabling environment variable usage (recommended for production)
     const AEMET_API_KEY = context.env.AEMET_API_KEY;
     if (!AEMET_API_KEY) {
         return new Response("Configuration Error: AEMET_API_KEY secret is missing.", { status: 500 });
@@ -197,15 +196,36 @@ export async function onRequest(context) {
     }
 
     try {
-        const weatherReport = new WeatherReportData()
-        // 2. Fetch and process the weather data (all steps remain the same)
-        const windyData = await fetchWindyData(WINDY_API_KEY)
-        weatherReport.mergeData(windyData);
-        const aemetData = await getFormattedAtisData(AEMET_API_KEY, KV_STORE);
-        weatherReport.mergeData(aemetData);
-        const LERMData = await fetchAndParseLERMConditions(KV_STORE);
-        weatherReport.wind_vrb = getVRBWind(weatherReport.wind_direction, LERMData.wind_direction);
-        weatherReport.mergeData(LERMData);
+        console.log("Starting concurrent data fetch...");
+        // 2. Fetch all weather data concurrently for better performance
+        const [windyData, aemetData, LERMData] = await Promise.all([
+            fetchWindyData(WINDY_API_KEY).catch(e => { console.error("Windy fetch failed:", e); return null; }),
+            getFormattedAtisData(AEMET_API_KEY, KV_STORE).catch(e => { console.error("AEMET fetch failed:", e); return null; }),
+            fetchAndParseLERMConditions(KV_STORE).catch(e => { console.error("LERM fetch failed:", e); return null; })
+        ]);
+
+        console.log("Concurrent fetch complete.");
+        console.log("windyData:", JSON.stringify(windyData));
+        console.log("aemetData:", JSON.stringify(aemetData));
+        console.log("LERMData:", JSON.stringify(LERMData));
+
+        // Explicit prioritization: LERM > AEMET > Windy
+        console.log("Merging data sources...");
+        const weatherReport = WeatherReportData.fromPrioritizedSources([LERMData, aemetData, windyData]);
+        console.log("Merged Weather Report:", JSON.stringify(weatherReport));
+
+        // Retain variable wind calculation (VRB) comparing lower and highest priority winds if they exist separately
+        let lowerPriorityWind = null;
+        if (aemetData && aemetData.wind_direction !== null && aemetData.wind_direction !== undefined) {
+            lowerPriorityWind = aemetData.wind_direction;
+        } else if (windyData && windyData.wind_direction !== null && windyData.wind_direction !== undefined) {
+            lowerPriorityWind = windyData.wind_direction;
+        }
+
+        if (lowerPriorityWind !== null && LERMData && LERMData.wind_direction !== null && LERMData.wind_direction !== undefined) {
+            weatherReport.wind_vrb = getVRBWind(lowerPriorityWind, LERMData.wind_direction);
+        }
+
         const atisData = formatReportForATIS(weatherReport);
 
         // 3. Generate the ATIS report object
@@ -246,24 +266,7 @@ export async function onRequest(context) {
     }
 }
 
-function mergeEMAs(aemetData, LERMData) {
-    const report = { ...aemetData };
-    // If LERM EMA is online, overwrite some of the values
-    report.wind_vrb = "";
-    if (LERMData.observationTime_raw) {
-        report.observationTime = LERMData.observationTime_atis
-        report.temperature = (LERMData.temperature_c) ? LERMData.temperature_c : report.temperature
-        if (LERMData.wind_speed_knots != null) {
-            report.wind_speed = LERMData.wind_speed_knots
-            report.wind_vrb = getVRBWind(report.wind_direction, LERMData.wind_direction_degrees)
-            report.wind_direction = LERMData.wind_direction_degrees
-        }
-        report.qnh = (LERMData.qnh_hpa != null) ? LERMData.qnh_hpa : report.qnh
-        report.sunrise = LERMData.sunrise
-        report.sunset = LERMData.sunset
-    }
-    return report
-}
+
 
 /**
  * Calculates and formats wind variability (VRB) for two wind directions, 
