@@ -3,7 +3,7 @@ import { getFormattedAtisData } from './aemet.js';
 import { fetchAndParseLERMConditions } from './robleEMA.js'
 import { fetchWindyData } from './windy.js';
 import { WeatherReportData } from './weatherReport.js';
-import { fetchMeteoclimaticData } from './meteoclimatic.js';
+// import { fetchMeteoclimaticData } from './meteoclimatic.js';
 
 // --- ATIS IDENTIFIER LOGIC ---
 const ATIS_IDENTIFIERS = [
