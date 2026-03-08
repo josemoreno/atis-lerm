@@ -58,23 +58,50 @@ async function fetchAemetJson(initialUrl, headers) {
  * @returns {object} Data structured for the ATISReport constructor.
  */
 function processAemetData(predictionData, observationDataVado, observationDataGuada) {
-    let reportData = {}
+    let reportData = { ...returnNullObject() };
     if (predictionData == null && observationDataVado == null && observationDataGuada == null) {
-        reportData = { ...returnNullObject() }
         return reportData
     }
     // Example: Getting current time (a quick way to get ZULU time)
     const now = new Date();
     reportData.time = now.getUTCHours().toString().padStart(2, '0') +
         now.getUTCMinutes().toString().padStart(2, '0');
+        
+    let guadaData = null;
+    let vadoData = null;
+
     // EMA GUADA has much more information
     if (observationDataGuada != null) {
-        getLatestObservationData(observationDataGuada, reportData)
+        guadaData = { ...returnNullObject() };
+        getLatestObservationData(observationDataGuada, guadaData);
+        reportData.guada_observationTime = guadaData.observationTime;
     }
     // EMA VADO to overwritte the information to a more similar location
     if (observationDataVado != null) {
-        getLatestObservationData(observationDataVado, reportData)
+        vadoData = { ...returnNullObject() };
+        getLatestObservationData(observationDataVado, vadoData);
+        reportData.vado_observationTime = vadoData.observationTime;
     }
+    
+    // Evaluate Timestamps for Priority
+    if (guadaData && vadoData) {
+        // Parse time to milliseconds
+        const vadoTime = new Date(vadoData.observationTime_raw).getTime();
+        const guadaTime = new Date(guadaData.observationTime_raw).getTime();
+        
+        if (vadoTime >= guadaTime) {
+            // Vado is newer or exact same time (priority goes to Vado)
+            Object.assign(reportData, vadoData);
+        } else {
+            // Guada is newer
+            Object.assign(reportData, guadaData);
+        }
+    } else if (vadoData) {
+        Object.assign(reportData, vadoData);
+    } else if (guadaData) {
+        Object.assign(reportData, guadaData);
+    }
+
     if (predictionData != null) {
         getSkyState(predictionData, reportData)
     }
